@@ -2,23 +2,25 @@
 
 import argparse
 import asyncio
+import hashlib
+import json
 import uuid
-from pathlib import Path
+from datetime import UTC, datetime
+from typing import Any
 
 import httpx
 from pydantic import BaseModel
 
-from evals.schema import Dataset, EvalCase
+from evals.schema import GOLDEN_PATH, Dataset, EvalCase
 from evals.scoring import score_turn
+from evals.sync import DATASET_NAME, git_sha, sync_dataset, sync_prompt
 from src import observability
 from src.agent.llm import ChatMessage, GroqClient, LLMClient, ToolCall
 from src.agent.loop import run_turn
-from src.agent.prompt import build_system_prompt
+from src.agent.prompt import PROMPT_NAME, build_system_prompt
 from src.agent.registry import Tool, build_registry
 from src.config import Settings
 from src.db.seed import seed_repository
-
-GOLDEN_PATH = Path(__file__).parent / "golden.json"
 
 
 class CaseSummary(BaseModel):
@@ -85,6 +87,29 @@ async def _run_case_once(
     return failures
 
 
+async def _run_case(
+    case: EvalCase,
+    llm: LLMClient,
+    registry: dict[str, Tool],
+    system_prompt: str,
+    repeats: int,
+) -> CaseSummary:
+    """Run one case `repeats` times and summarise."""
+    passed_runs = 0
+    failures: list[str] = []
+    for _ in range(repeats):
+        run_failures = await _run_case_once(case, llm, registry, system_prompt)
+        passed_runs += not run_failures
+        failures += run_failures
+    return CaseSummary(
+        case_id=case.id,
+        language=case.language,
+        runs=repeats,
+        passed_runs=passed_runs,
+        failures=failures,
+    )
+
+
 async def run_dataset(dataset: Dataset, llm: LLMClient, repeats: int) -> Report:
     """Run every case `repeats` times, one after another, and summarise.
 
@@ -98,24 +123,105 @@ async def run_dataset(dataset: Dataset, llm: LLMClient, repeats: int) -> Report:
     """
     registry = build_registry(seed_repository(), today=dataset.today)
     system_prompt = build_system_prompt(dataset.today)
-    summaries: list[CaseSummary] = []
-    for case in dataset.cases:
-        passed_runs = 0
-        failures: list[str] = []
-        for _ in range(repeats):
-            run_failures = await _run_case_once(case, llm, registry, system_prompt)
-            passed_runs += not run_failures
-            failures += run_failures
-        summaries.append(
-            CaseSummary(
+    return Report(
+        cases=[
+            await _run_case(case, llm, registry, system_prompt, repeats)
+            for case in dataset.cases
+        ]
+    )
+
+
+def tools_fingerprint(registry: dict[str, Tool]) -> str:
+    """Short hash of every tool's name, description and schema.
+
+    It changes when a tool is added, removed or edited, so two Langfuse runs show
+    at a glance whether the tools differed.
+    """
+    specs = [registry[name].spec().model_dump() for name in sorted(registry)]
+    return hashlib.sha256(json.dumps(specs, sort_keys=True).encode()).hexdigest()[:8]
+
+
+def run_on_langfuse(dataset: Dataset, settings: Settings, repeats: int) -> Report:
+    """Sync prompt and dataset, then run all cases as one Langfuse experiment.
+
+    Each case is one experiment item. Its score `pass_rate` is the share of its
+    repeats that passed, so one run per code change is enough to compare.
+    Call it only when `observability.is_enabled()`; it raises otherwise.
+
+    Args:
+        dataset: The golden dataset.
+        settings: Groq key and model.
+        repeats: How many times to run each case.
+
+    Returns:
+        The same report a local run prints.
+    """
+    sha = git_sha()
+    prompt_version = sync_prompt(sha)
+    sync_dataset(dataset)
+    registry = build_registry(seed_repository(), today=dataset.today)
+    system_prompt = build_system_prompt(dataset.today)
+    cases = {case.id: case for case in dataset.cases}
+    summaries: dict[str, CaseSummary] = {}
+
+    async def task(*, item: Any, **_: Any) -> dict[str, Any]:
+        # Built here, not outside: the SDK runs this task on its own event loop.
+        async with httpx.AsyncClient(timeout=30) as http:
+            llm = GroqClient(settings.groq_api_key, settings.groq_model, http)
+            summary = await _run_case(
+                cases[item.id], llm, registry, system_prompt, repeats
+            )
+        summaries[item.id] = summary
+        return summary.model_dump()
+
+    def evaluator(*, output: dict[str, Any], **_: Any) -> dict[str, Any]:
+        reasons = "; ".join(dict.fromkeys(output["failures"]))
+        return {
+            "name": "pass_rate",
+            "value": output["passed_runs"] / output["runs"],
+            "comment": reasons or None,
+        }
+
+    now = datetime.now(UTC)
+    url = observability.run_experiment(
+        DATASET_NAME,
+        f"{sha}-v{prompt_version}-{now:%m%d-%H%M}",
+        task,
+        evaluator,
+        {
+            "git_sha": sha,
+            "prompt_name": PROMPT_NAME,
+            "prompt_version": str(prompt_version),
+            "model": settings.groq_model,
+            "tools": ",".join(registry),
+            "tools_hash": tools_fingerprint(registry),
+            "repeats": str(repeats),
+        },
+    )
+    if url:
+        print(f"Langfuse experiment: {url}\n")
+    # An item that crashed is logged by Langfuse and skipped. Count it as failed
+    # here, so a crash cannot make the pass rate look better.
+    return Report(
+        cases=[
+            summaries.get(case.id)
+            or CaseSummary(
                 case_id=case.id,
                 language=case.language,
                 runs=repeats,
-                passed_runs=passed_runs,
-                failures=failures,
+                passed_runs=0,
+                failures=["task crashed, see the trace in Langfuse"],
             )
-        )
-    return Report(cases=summaries)
+            for case in dataset.cases
+        ]
+    )
+
+
+async def _run_local(dataset: Dataset, settings: Settings, repeats: int) -> Report:
+    """Run the dataset against Groq without touching Langfuse."""
+    async with httpx.AsyncClient(timeout=30) as http:
+        llm = GroqClient(settings.groq_api_key, settings.groq_model, http)
+        return await run_dataset(dataset, llm, repeats)
 
 
 def _print_report(report: Report) -> None:
@@ -131,8 +237,12 @@ def _print_report(report: Report) -> None:
         print(f"Flaky cases: {', '.join(report.flaky_case_ids)}")
 
 
-async def main() -> None:
-    """Run the golden dataset against Groq and print the report."""
+def main() -> None:
+    """Run the golden dataset against Groq and print the report.
+
+    With Langfuse keys set, the run is synced and recorded as an experiment.
+    Without them it runs locally and nothing is uploaded.
+    """
     parser = argparse.ArgumentParser(description="Run the golden eval dataset.")
     parser.add_argument(
         "--repeats",
@@ -145,11 +255,14 @@ async def main() -> None:
     args = parser.parse_args()
     settings = Settings()
     dataset = Dataset.model_validate_json(GOLDEN_PATH.read_text())
-    async with httpx.AsyncClient(timeout=30) as http:
-        llm = GroqClient(settings.groq_api_key, settings.groq_model, http)
-        _print_report(await run_dataset(dataset, llm, args.repeats))
+    if observability.is_enabled():
+        report = run_on_langfuse(dataset, settings, args.repeats)
+    else:
+        print("Langfuse keys not set: running locally, nothing is uploaded.\n")
+        report = asyncio.run(_run_local(dataset, settings, args.repeats))
+    _print_report(report)
     observability.flush()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
