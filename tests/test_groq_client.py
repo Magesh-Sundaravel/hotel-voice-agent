@@ -5,7 +5,9 @@ import json
 import httpx
 import pytest
 
+from src import observability
 from src.agent.llm import AssistantMessage, ChatMessage, GroqClient, ToolCall, ToolSpec
+from tests.test_observability import FakeClient
 
 TOOL = ToolSpec(
     name="check_availability",
@@ -177,3 +179,40 @@ async def test_a_non_numeric_retry_after_falls_back_to_the_default_wait() -> Non
     await client.complete([ChatMessage(role="user", content="Hi")], [])
 
     assert waits == [5]
+
+
+@pytest.fixture
+def fake_langfuse(monkeypatch: pytest.MonkeyPatch) -> FakeClient:
+    """Route observability to a recording fake."""
+    fake = FakeClient()
+    monkeypatch.setattr(observability, "_get_client", lambda: fake)
+    return fake
+
+
+@pytest.mark.asyncio
+async def test_model_call_is_traced_as_a_generation(fake_langfuse: FakeClient) -> None:
+    """Inside a call, one request = one generation with model, output and usage."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"message": {"role": "assistant", "content": "Ciao"}}],
+                "usage": {"prompt_tokens": 12, "completion_tokens": 3},
+            },
+        )
+
+    groq = make_client(httpx.MockTransport(handler))
+    with observability.call_session("call-1", "it"):
+        await groq.complete([ChatMessage(role="user", content="Salve")], [TOOL])
+
+    (obs,) = fake_langfuse.observations
+    assert obs.started["as_type"] == "generation"
+    assert obs.started["model"] == "openai/gpt-oss-120b"
+    assert obs.started["input"] == [{"role": "user", "content": "Salve"}]
+    assert obs.updates == [
+        {
+            "output": {"role": "assistant", "content": "Ciao"},
+            "usage_details": {"input": 12, "output": 3},
+        }
+    ]
