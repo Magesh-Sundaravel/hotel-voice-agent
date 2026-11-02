@@ -21,7 +21,7 @@ Supabase is the hosted free tier. AWS is a future option (ECS Fargate would be t
 | FastAPI backend (local, via ngrok) | tool endpoints, `/llm` proxy | src/tools/, src/voice/ |
 | Supabase (hosted) | guests, rooms, room types, rates, reservations, call log (see data-model.md) | src/db/ |
 | Gmail | send confirmations (with .ics invite) and follow-ups; read on demand | src/tools/ |
-| Langfuse (self-hosted, Docker Compose) | traces, eval runs, scores | evals/ |
+| Langfuse Cloud | traces, eval runs, scores | evals/ |
 
 Room availability lives only in Supabase. There is no calendar integration; guests get a calendar invite as an `.ics` attachment on the confirmation email.
 

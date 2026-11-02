@@ -1,4 +1,4 @@
-# Local stack: FastAPI backend + self-hosted Langfuse (see docs/decisions/003).
+# FastAPI backend + optional self-hosted Langfuse (see docs/decisions/003). Run only the backend with: docker compose up api
 # Supabase is hosted (free tier), so it is not part of this file.
 # ngrok runs on the host: `ngrok http --url=<your-static-domain> 8000`.
 # Langfuse service list adapted from the official docker-compose.yml (langfuse/langfuse, v4 images).
@@ -37,13 +37,10 @@ services:
   api:
     build: .
     env_file: .env
-    environment:
-      # Inside the compose network Langfuse is reachable by service name.
-      LANGFUSE_HOST: http://langfuse-web:3000
+    # Langfuse keys and LANGFUSE_BASE_URL come from .env (Cloud by default).
+    # To use the self-hosted stack below, set LANGFUSE_BASE_URL=http://langfuse-web:3000.
     ports:
       - 8000:8000
-    depends_on:
-      - langfuse-web
 
   langfuse-worker:
     image: docker.langfuse.com/langfuse/langfuse-worker:4
