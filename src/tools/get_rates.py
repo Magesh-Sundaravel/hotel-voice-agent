@@ -2,18 +2,23 @@
 
 from datetime import date, timedelta
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.db.hotel import HotelRepository
-from src.tools import MAX_STAY_NIGHTS
+from src.tools import CHECK_IN_DESCRIPTION, CHECK_OUT_DESCRIPTION, MAX_STAY_NIGHTS
 
 
 class GetRatesInput(BaseModel):
     """Arguments the agent passes. check_out is exclusive."""
 
-    room_type: str
-    check_in: date
-    check_out: date
+    room_type: str = Field(
+        description=(
+            "Name of the room type, for example 'Junior Suite', copied from a "
+            "check_availability result. Upper or lower case does not matter."
+        )
+    )
+    check_in: date = Field(description=CHECK_IN_DESCRIPTION)
+    check_out: date = Field(description=CHECK_OUT_DESCRIPTION)
 
 
 class GetRatesOk(BaseModel):

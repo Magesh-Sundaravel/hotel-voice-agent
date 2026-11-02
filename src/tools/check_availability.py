@@ -2,18 +2,20 @@
 
 from datetime import date
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.db.hotel import HotelRepository
-from src.tools import MAX_STAY_NIGHTS
+from src.tools import CHECK_IN_DESCRIPTION, CHECK_OUT_DESCRIPTION, MAX_STAY_NIGHTS
 
 
 class AvailabilityInput(BaseModel):
     """Arguments the agent passes. check_out is exclusive."""
 
-    check_in: date
-    check_out: date
-    guests: int
+    check_in: date = Field(description=CHECK_IN_DESCRIPTION)
+    check_out: date = Field(description=CHECK_OUT_DESCRIPTION)
+    guests: int = Field(
+        description="Total number of people who will stay, children included. At least 1."
+    )
 
 
 class RoomOption(BaseModel):
