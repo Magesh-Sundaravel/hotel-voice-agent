@@ -7,10 +7,10 @@
 - Phone: Telnyx SIP trunk -> ElevenLabs
 - LLM: Groq, plugged into ElevenLabs as the agent's LLM
 - Backend: FastAPI (Python 3.12, uv). Hosts the tools the agent calls.
-- Deployment: AWS
-- Data: Supabase (guests, bookings)
-- Integrations: Google Calendar, Gmail (read + send)
-- Observability + evals: Langfuse, self-hosted on AWS
+- Deployment: local Docker Compose + ngrok (AWS is a future option)
+- Data: Supabase (guests, rooms, rates, reservations, call log)
+- Integrations: Gmail (read + send; confirmations carry an .ics invite)
+- Observability + evals: Langfuse, self-hosted locally via Docker Compose
 
 ## Layout
 - src/agent/  system prompt, tool registry

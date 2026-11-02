@@ -6,7 +6,9 @@ Status: accepted
 One LLM call loop with native tool calling. The previous LangGraph version is not carried over.
 
 ## Why
-TODO
+- A phone call is one turn at a time, and native tool calling already handles it.
+- A graph adds latency to every turn and a state machine to maintain.
 
 ## Revisit if
-TODO
+- A flow needs explicit multi-step state, such as group bookings or payments.
+- Evals show the single prompt can't hold the policies.
