@@ -2,6 +2,7 @@
 
 import argparse
 import asyncio
+import uuid
 from pathlib import Path
 
 import httpx
@@ -9,6 +10,7 @@ from pydantic import BaseModel
 
 from evals.schema import Dataset, EvalCase
 from evals.scoring import score_turn
+from src import observability
 from src.agent.llm import ChatMessage, GroqClient, LLMClient, ToolCall
 from src.agent.loop import run_turn
 from src.agent.prompt import build_system_prompt
@@ -66,16 +68,20 @@ async def _run_case_once(
     """Play one scripted conversation and return every failed check (none = pass)."""
     history = [ChatMessage(role="system", content=system_prompt)]
     failures: list[str] = []
-    for turn in case.turns:
-        try:
-            result = await run_turn(llm, registry, history, turn.caller)
-        except httpx.HTTPError as error:
-            failures.append(f"request failed: {type(error).__name__}")
-            break
-        new_messages = result.history[len(history) :]
-        calls: list[ToolCall] = [c for m in new_messages for c in m.tool_calls or []]
-        failures += score_turn(turn.expect, case.language, calls, result.reply)
-        history = result.history
+    call_id = f"eval-{case.id}-{uuid.uuid4().hex[:6]}"
+    with observability.call_session(call_id, case.language):
+        for turn in case.turns:
+            try:
+                result = await run_turn(llm, registry, history, turn.caller)
+            except httpx.HTTPError as error:
+                failures.append(f"request failed: {type(error).__name__}")
+                break
+            new_messages = result.history[len(history) :]
+            calls: list[ToolCall] = [
+                c for m in new_messages for c in m.tool_calls or []
+            ]
+            failures += score_turn(turn.expect, case.language, calls, result.reply)
+            history = result.history
     return failures
 
 
@@ -142,6 +148,7 @@ async def main() -> None:
     async with httpx.AsyncClient(timeout=30) as http:
         llm = GroqClient(settings.groq_api_key, settings.groq_model, http)
         _print_report(await run_dataset(dataset, llm, args.repeats))
+    observability.flush()
 
 
 if __name__ == "__main__":

@@ -52,9 +52,7 @@ async def main() -> None:
     )
     call_id = f"dryrun-{uuid.uuid4().hex[:8]}"
     with observability.call_session(call_id, "en"):
-        result = await run_turn(
-            ScriptedLLM(), build_registry(repo), [], USER_TEXT
-        )
+        result = await run_turn(ScriptedLLM(), build_registry(repo), [], USER_TEXT)
     observability.flush()
     print(f"call_id: {call_id}")
     print(f"reply:   {result.reply}")

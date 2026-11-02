@@ -7,6 +7,8 @@ from typing import Any, Literal, Protocol
 import httpx
 from pydantic import BaseModel, Field
 
+from src import observability
+
 GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
 MAX_RETRIES = 3
 DEFAULT_RETRY_WAIT_S = 5.0
@@ -96,9 +98,10 @@ class GroqClient:
         self, messages: list[ChatMessage], tools: list[ToolSpec]
     ) -> AssistantMessage:
         """Call chat/completions and parse the first choice."""
+        wire = [m.to_wire() for m in messages]
         body = {
             "model": self._model,
-            "messages": [m.to_wire() for m in messages],
+            "messages": wire,
             "tools": [
                 {
                     "type": "function",
@@ -111,17 +114,27 @@ class GroqClient:
                 for t in tools
             ],
         }
-        for attempt in range(MAX_RETRIES + 1):
-            response = await self._http.post(
-                GROQ_CHAT_URL,
-                headers={"Authorization": f"Bearer {self._api_key}"},
-                json=body,
+        with observability.generation(self._model, wire) as generation:
+            for attempt in range(MAX_RETRIES + 1):
+                response = await self._http.post(
+                    GROQ_CHAT_URL,
+                    headers={"Authorization": f"Bearer {self._api_key}"},
+                    json=body,
+                )
+                if response.status_code != 429 or attempt == MAX_RETRIES:
+                    break
+                await self._sleep(_retry_wait(response))
+            response.raise_for_status()
+            data = response.json()
+            message = data["choices"][0]["message"]
+            usage = data.get("usage") or {}
+            generation.update(
+                output=message,
+                usage_details={
+                    "input": usage.get("prompt_tokens", 0),
+                    "output": usage.get("completion_tokens", 0),
+                },
             )
-            if response.status_code != 429 or attempt == MAX_RETRIES:
-                break
-            await self._sleep(_retry_wait(response))
-        response.raise_for_status()
-        message = response.json()["choices"][0]["message"]
         return AssistantMessage(
             content=message.get("content"),
             tool_calls=[
