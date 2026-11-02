@@ -4,13 +4,13 @@ Docs: https://langfuse.com/docs/observability/sdk/overview , .../sdk/instrumenta
 Marked (src) = read in installed package `langfuse/_client/*.py`.
 
 ## 1. Server requirement
-- SDK v5 needs self-hosted Langfuse >= 4.59.0 (upgrade guide). Compose image tag must be pinned to >= 4.59 (UNVERIFIED what our compose pins).
+- SDK v5 needs self-hosted Langfuse >= 4.59.0 (upgrade guide). Not relevant to us: we use Langfuse Cloud (ADR 003).
 - Spans go to OTLP `POST {base_url}/api/public/otel/v1/traces`, gzip, Basic auth public:secret, header `x-langfuse-ingestion-version: 4` (src).
 
 ## 2. Init, env vars, disabled mode
 - `Langfuse(*, public_key, secret_key, base_url, host(deprecated), timeout=5, debug, tracing_enabled=True, flush_at, flush_interval, environment, release, sample_rate, mask, mask_otel_spans, ...)` (src). Keyword-only. One singleton per public_key; later args ignored.
 - `get_client()` returns the singleton, creating `Langfuse()` from env if none exists. Explicit `Langfuse(...)` first, then `get_client()` elsewhere, is fine.
-- Env: LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_BASE_URL (LANGFUSE_HOST deprecated, still read), LANGFUSE_TRACING_ENABLED (`false` disables), LANGFUSE_TIMEOUT, LANGFUSE_FLUSH_AT, LANGFUSE_FLUSH_INTERVAL, LANGFUSE_SAMPLE_RATE, LANGFUSE_DEBUG, LANGFUSE_TRACING_ENVIRONMENT, LANGFUSE_RELEASE (src). Compose/.env should use BASE_URL.
+- Env: LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_BASE_URL (LANGFUSE_HOST deprecated, still read), LANGFUSE_TRACING_ENABLED (`false` disables), LANGFUSE_TIMEOUT, LANGFUSE_FLUSH_AT, LANGFUSE_FLUSH_INTERVAL, LANGFUSE_SAMPLE_RATE, LANGFUSE_DEBUG, LANGFUSE_TRACING_ENVIRONMENT, LANGFUSE_RELEASE (src). `.env` should use BASE_URL.
 - Missing key: `public_key or env` is None -> warning logged, client becomes no-op (NoOpTracer), no raise (src). Careful: env var set to the EMPTY string is not None, so it does NOT disable; pass `None` (not "") or set `tracing_enabled=False` when keys are empty.
 - Disabled/no-op client: `.api`, `.async_api`, `create_dataset*`, `get_dataset` raise AttributeError/Error ("not initialized") (src). `flush()`/`shutdown()` are safe no-ops. `create_score` returns silently if tracing disabled.
 

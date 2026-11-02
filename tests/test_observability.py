@@ -159,7 +159,7 @@ def test_nothing_is_recorded_outside_a_call(client: FakeClient) -> None:
 
 
 def test_turn_span_carries_call_id_and_language(client: FakeClient) -> None:
-    """One trace per turn; the call is the session; language is tag + metadata."""
+    """One trace per turn; the call is the session; language is a tag."""
     with (
         observability.call_session("call-1", "it"),
         observability.turn_span("Ciao") as turn,
@@ -175,7 +175,6 @@ def test_turn_span_carries_call_id_and_language(client: FakeClient) -> None:
             "session_id": "call-1",
             "trace_name": "handle-caller-turn",
             "tags": ["lang:it"],
-            "metadata": {"call_id": "call-1", "language": "it"},
         }
     ]
 

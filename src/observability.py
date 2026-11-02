@@ -117,8 +117,10 @@ def call_session(call_id: str, language: str) -> Iterator[None]:
         call_id: The ElevenLabs conversation id, or a generated id.
         language: "it" or "en"; anything else is recorded as "unknown".
     """
-    lang = language if language in ("it", "en") else "unknown"
-    token = _call.set(CallContext(call_id=call_id, language=lang))  # type: ignore[arg-type]
+    lang: Literal["it", "en", "unknown"] = (
+        "it" if language == "it" else "en" if language == "en" else "unknown"
+    )
+    token = _call.set(CallContext(call_id=call_id, language=lang))
     try:
         yield
     finally:
@@ -145,10 +147,8 @@ def _observe(**kwargs: Any) -> Iterator[Observation]:
         return
     try:
         yield Observation(inner)
-    except BaseException:
+    finally:
         _close(manager, sys.exc_info())
-        raise
-    _close(manager, (None, None, None))
 
 
 def _close(manager: Any, exc_info: tuple[Any, Any, Any]) -> None:
@@ -172,7 +172,6 @@ def turn_span(user_text: str) -> Iterator[Observation]:
             session_id=call.call_id,
             trace_name=TURN_NAME,
             tags=[f"lang:{call.language}"],
-            metadata={"call_id": call.call_id, "language": call.language},
         )
         scope.__enter__()
     except Exception as error:  # noqa: BLE001 - tracing must never break a call

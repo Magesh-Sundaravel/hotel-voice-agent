@@ -10,7 +10,7 @@
 7. Tool calls and LLM calls are traced in Langfuse
 
 ## Run model
-Local, for a portfolio demo: FastAPI and Langfuse run in Docker Compose on the developer's laptop (`docker-compose.yml`).
+Local, for a portfolio demo: FastAPI runs in Docker Compose on the developer's laptop; Supabase and Langfuse are hosted (`docker-compose.yml`).
 ngrok (free static domain) exposes FastAPI to ElevenLabs. The laptop must be on while calls come in.
 Supabase is the hosted free tier. AWS is a future option (ECS Fargate would be the choice: no cold starts, long-lived streaming for the LLM proxy); nothing is deployed there.
 
