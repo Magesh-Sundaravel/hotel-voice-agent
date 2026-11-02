@@ -15,7 +15,7 @@ The golden dataset lives in the repo (evals/golden.json) and is synced one-way t
 - Traces leave the machine, so masking of names, phones and emails must happen before data reaches a trace (see `.claude/rules/data.md`). Tests and evals use fake guests only.
 - Config is `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL` in `.env`. Use `https://us.cloud.langfuse.com` if the project is in the US region.
 - Dataset is versioned in git; Langfuse dataset is a copy, never edited in the UI.
-- The Langfuse services in `docker-compose.yml` are kept as an optional self-host path for anyone replicating the project. They are not needed for normal development; point `LANGFUSE_BASE_URL` at `http://localhost:3000` to use them.
+- `docker-compose.yml` runs only the backend; there is no local Langfuse stack.
 
 ## Revisit if
 - Masking cannot be guaranteed and guest data must stay on the machine (then self-host again).
