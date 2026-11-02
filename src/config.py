@@ -10,6 +10,7 @@ class Settings(BaseSettings):
 
     elevenlabs_api_key: str = ""
     groq_api_key: str = ""
+    groq_model: str = "openai/gpt-oss-120b"
     telnyx_api_key: str = ""
     supabase_url: str = ""
     supabase_key: str = ""
