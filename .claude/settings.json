@@ -1,0 +1,18 @@
+{
+  "attribution": { "commit": "", "pr": "" },
+  "permissions": {
+    "deny": ["Read(./.env)", "Edit(./.env)"]
+  },
+  "hooks": {
+    "PostToolUse": [
+      { "matcher": "Edit|MultiEdit|Write",
+        "hooks": [{ "type": "command",
+                    "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/ruff.py\"" }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command",
+                    "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/tests_on_stop.py\"",
+                    "timeout": 120 }] }
+    ]
+  }
+}

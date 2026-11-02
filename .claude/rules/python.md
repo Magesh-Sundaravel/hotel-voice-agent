@@ -1,0 +1,12 @@
+# Python stack
+- Python 3.12, uv for everything: `uv add`, `uv run`, `uv sync`. Never pip, never requirements.txt
+- Dependencies live in pyproject.toml; dev deps via `uv add --dev`
+- FastAPI only (no Flask/Django); `async def` for all routes and services
+- Pydantic models for all request/response schemas, never raw dicts
+- Config via pydantic-settings `BaseSettings`, never `os.getenv()` inline
+- Type hints on every function (params + return), Google-style docstrings
+- Imports: stdlib -> third-party -> local
+- No bare `except:`; catch specific exceptions
+- Tests with pytest in tests/; run `uv run pytest -q` before saying a task is done
+- Docker for deployment; never commit a real .env, only .env.example
+- Secrets in production live in AWS Secrets Manager, not .env
