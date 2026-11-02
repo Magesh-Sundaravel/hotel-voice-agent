@@ -2,15 +2,18 @@
 
 import asyncio
 import json
+from contextlib import nullcontext
 from datetime import date
 
 import pytest
 
+from src import observability
 from src.agent.llm import AssistantMessage, ChatMessage, ToolCall, ToolSpec
 from src.agent.loop import FALLBACK_REPLY, run_turn
 from src.agent.registry import Tool, build_registry
 from src.db.hotel import InMemoryHotelRepository, RoomType
 from src.tools.check_availability import AvailabilityInput
+from tests.test_observability import FakeClient
 
 
 class ScriptedLLM:
@@ -252,3 +255,104 @@ async def test_a_slow_tool_times_out(monkeypatch: pytest.MonkeyPatch) -> None:
         "ok": False,
         "reason": "tool_timeout",
     }
+
+
+# --- tracing ---------------------------------------------------------------
+
+
+@pytest.fixture
+def fake_langfuse(monkeypatch: pytest.MonkeyPatch) -> FakeClient:
+    """Route observability to a recording fake."""
+    fake = FakeClient()
+    monkeypatch.setattr(observability, "_get_client", lambda: fake)
+    monkeypatch.setattr(
+        observability, "propagate_attributes", lambda **_: nullcontext()
+    )
+    return fake
+
+
+@pytest.mark.asyncio
+async def test_a_turn_is_traced_with_its_tool_calls(fake_langfuse: FakeClient) -> None:
+    """One turn span (caller text -> reply) with a tool span per tool call."""
+    call = ToolCall(id="c1", name="check_availability", arguments=VALID_ARGS)
+    llm = ScriptedLLM(
+        [
+            AssistantMessage(content=None, tool_calls=[call]),
+            AssistantMessage(content="We have a Superior free."),
+        ]
+    )
+
+    with observability.call_session("call-1", "en"):
+        await run_turn(
+            llm, make_registry(), [ChatMessage(role="system", content="s")], "Room?"
+        )
+
+    turn, tool = fake_langfuse.observations
+    assert turn.started["name"] == "handle-caller-turn"
+    assert turn.started["input"] == "Room?"
+    assert turn.updates == [{"output": "We have a Superior free."}]
+    assert tool.started["as_type"] == "tool"
+    assert tool.started["name"] == "check_availability"
+    assert tool.started["input"] == VALID_ARGS
+    assert json.loads(tool.updates[0]["output"])["ok"] is True
+    assert "level" not in tool.updates[0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("name", "arguments", "reason"),
+    [
+        ("book_the_moon", "{}", "unknown_tool"),
+        ("check_availability", "not json", "invalid_arguments"),
+    ],
+)
+async def test_failed_tool_calls_are_marked_as_errors(
+    fake_langfuse: FakeClient, name: str, arguments: str, reason: str
+) -> None:
+    """A tool span for a call that failed carries level ERROR and the reason."""
+    call = ToolCall(id="c1", name=name, arguments=arguments)
+    llm = ScriptedLLM(
+        [
+            AssistantMessage(content=None, tool_calls=[call]),
+            AssistantMessage(content="Sorry."),
+        ]
+    )
+
+    with observability.call_session("call-1", "it"):
+        await run_turn(
+            llm, make_registry(), [ChatMessage(role="system", content="s")], "Room?"
+        )
+
+    tool = fake_langfuse.observations[1]
+    assert tool.updates[0]["level"] == "ERROR"
+    assert tool.updates[0]["status_message"] == reason
+
+
+@pytest.mark.asyncio
+async def test_a_tracing_failure_does_not_change_the_reply(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If Langfuse blows up, the caller still gets the answer."""
+
+    class Exploding:
+        def start_as_current_observation(self, **_: object) -> object:
+            raise RuntimeError("langfuse is down")
+
+    monkeypatch.setattr(observability, "_get_client", lambda: Exploding())
+    monkeypatch.setattr(
+        observability, "propagate_attributes", lambda **_: nullcontext()
+    )
+    call = ToolCall(id="c1", name="check_availability", arguments=VALID_ARGS)
+    llm = ScriptedLLM(
+        [
+            AssistantMessage(content=None, tool_calls=[call]),
+            AssistantMessage(content="We have a Superior free."),
+        ]
+    )
+
+    with observability.call_session("call-1", "en"):
+        result = await run_turn(
+            llm, make_registry(), [ChatMessage(role="system", content="s")], "Room?"
+        )
+
+    assert result.reply == "We have a Superior free."

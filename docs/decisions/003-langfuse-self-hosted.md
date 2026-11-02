@@ -1,22 +1,22 @@
-# 003: Langfuse, self-hosted locally via Docker Compose, for observability and evals
+# 003: Langfuse Cloud, with PII masking, for observability and evals
 
-Status: accepted
+Status: accepted (supersedes the original decision to self-host via Docker Compose)
 
 ## Decision
-Langfuse for tracing, eval runs and scores, self-hosted on the developer's machine through `docker-compose.yml`.
+Langfuse Cloud (https://cloud.langfuse.com, EU region) for tracing, eval runs and scores.
 The golden dataset lives in the repo (evals/golden.json) and is synced one-way to Langfuse.
 
 ## Why
-- Guest PII never leaves the machine (masking still applies, see `.claude/rules/data.md`).
-- Keeps the project simple and free of cloud cost; the same compose file runs the whole demo.
+- Nothing to run locally: no Postgres, ClickHouse, Redis or MinIO on the laptop.
+- Traces stay reachable when the stack is down, and from a backend deployed off the laptop.
+- Free tier covers a portfolio project.
 
 ## Consequences
-- Services required: langfuse-web, langfuse-worker, Postgres, ClickHouse, Redis, MinIO (S3-compatible storage). Taken from the official Langfuse compose file; images are the v4 tags.
-- Cost: no cloud bill. It needs RAM and disk on the laptop (ClickHouse is the heavy part).
-- Traces are reachable only while the stack is up. LLM and tool traces come from the backend in the same compose network (`http://langfuse-web:3000`).
+- Traces leave the machine, so masking of names, phones and emails must happen before data reaches a trace (see `.claude/rules/data.md`). Tests and evals use fake guests only.
+- Config is `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL` in `.env`. Use `https://us.cloud.langfuse.com` if the project is in the US region.
 - Dataset is versioned in git; Langfuse dataset is a copy, never edited in the UI.
-- Moving to AWS later means running the same services there (or switching to Langfuse Cloud with masking).
+- The Langfuse services in `docker-compose.yml` are kept as an optional self-host path for anyone replicating the project. They are not needed for normal development; point `LANGFUSE_BASE_URL` at `http://localhost:3000` to use them.
 
 ## Revisit if
-- We deploy the backend off the laptop and need traces from it.
-- The local stack gets too heavy for the machine.
+- Masking cannot be guaranteed and guest data must stay on the machine (then self-host again).
+- Free-tier limits are hit.

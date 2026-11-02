@@ -10,7 +10,7 @@
 - Deployment: local Docker Compose + ngrok (AWS is a future option)
 - Data: Supabase (guests, rooms, rates, reservations, call log)
 - Integrations: Gmail (read + send; confirmations carry an .ics invite)
-- Observability + evals: Langfuse, self-hosted locally via Docker Compose
+- Observability + evals: Langfuse Cloud (PII masked before traces are sent)
 
 ## Layout
 - src/agent/  system prompt, tool registry
