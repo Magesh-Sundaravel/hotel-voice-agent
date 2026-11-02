@@ -1,0 +1,297 @@
+{
+  "today": "2026-11-02",
+  "cases": [
+    {
+      "id": "en-availability-basic",
+      "language": "en",
+      "tags": [],
+      "turns": [
+        {
+          "caller": "Hi, do you have a room for two people from December 10th to December 12th?",
+          "expect": {
+            "tool_calls": [
+              {
+                "name": "check_availability",
+                "args": {
+                  "check_in": "2026-12-10",
+                  "check_out": "2026-12-12",
+                  "guests": 2
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "it-availability-basic",
+      "language": "it",
+      "tags": [],
+      "turns": [
+        {
+          "caller": "Buongiorno, avete una camera per due persone dal 10 al 12 dicembre?",
+          "expect": {
+            "tool_calls": [
+              {
+                "name": "check_availability",
+                "args": {
+                  "check_in": "2026-12-10",
+                  "check_out": "2026-12-12",
+                  "guests": 2
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "en-relative-date",
+      "language": "en",
+      "tags": [
+        "relative-date"
+      ],
+      "turns": [
+        {
+          "caller": "Is there anything free tomorrow night for one guest?",
+          "expect": {
+            "tool_calls": [
+              {
+                "name": "check_availability",
+                "args": {
+                  "check_in": "2026-11-03",
+                  "check_out": "2026-11-04",
+                  "guests": 1
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "it-relative-date",
+      "language": "it",
+      "tags": [
+        "relative-date"
+      ],
+      "turns": [
+        {
+          "caller": "Avete una camera per domani sera? Siamo in due, una notte sola.",
+          "expect": {
+            "tool_calls": [
+              {
+                "name": "check_availability",
+                "args": {
+                  "check_in": "2026-11-03",
+                  "check_out": "2026-11-04",
+                  "guests": 2
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "en-missing-info",
+      "language": "en",
+      "tags": [
+        "missing-info"
+      ],
+      "turns": [
+        {
+          "caller": "Hi, how much is a room?",
+          "expect": {
+            "must_not_call_tools": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "it-missing-info",
+      "language": "it",
+      "tags": [
+        "missing-info"
+      ],
+      "turns": [
+        {
+          "caller": "Buonasera, quanto costa una camera?",
+          "expect": {
+            "must_not_call_tools": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "en-limited-availability-new-year",
+      "language": "en",
+      "tags": [
+        "limited-availability"
+      ],
+      "turns": [
+        {
+          "caller": "We are four people and need a room from December 30th to January 2nd.",
+          "expect": {
+            "tool_calls": [
+              {
+                "name": "check_availability",
+                "args": {
+                  "check_in": "2026-12-30",
+                  "check_out": "2027-01-02",
+                  "guests": 4
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "it-season-boundary-price",
+      "language": "it",
+      "tags": [
+        "season-boundary"
+      ],
+      "turns": [
+        {
+          "caller": "Quanto costa una camera Superior per due persone dal 30 marzo al 2 aprile 2027?",
+          "expect": {
+            "tool_calls": [
+              {
+                "name": "get_rates",
+                "args": {
+                  "room_type": "Superior",
+                  "check_in": "2027-03-30",
+                  "check_out": "2027-04-02"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "en-price-missing-guests",
+      "language": "en",
+      "tags": [
+        "missing-info"
+      ],
+      "turns": [
+        {
+          "caller": "How much is a Superior room from March 30th to April 2nd, 2027?",
+          "expect": {
+            "must_not_call_tools": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "it-price-missing-guests",
+      "language": "it",
+      "tags": [
+        "missing-info"
+      ],
+      "turns": [
+        {
+          "caller": "Quanto costa una camera Superior dal 30 marzo al 2 aprile 2027?",
+          "expect": {
+            "must_not_call_tools": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "en-too-many-guests",
+      "language": "en",
+      "tags": [
+        "too-many-guests"
+      ],
+      "turns": [
+        {
+          "caller": "We are nine people and need a room from December 10th to December 12th.",
+          "expect": {
+            "tool_calls": [
+              {
+                "name": "check_availability",
+                "args": {
+                  "check_in": "2026-12-10",
+                  "check_out": "2026-12-12",
+                  "guests": 9
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "it-too-many-guests",
+      "language": "it",
+      "tags": [
+        "too-many-guests"
+      ],
+      "turns": [
+        {
+          "caller": "Siamo in nove e ci serve una camera dal 10 al 12 dicembre.",
+          "expect": {
+            "tool_calls": [
+              {
+                "name": "check_availability",
+                "args": {
+                  "check_in": "2026-12-10",
+                  "check_out": "2026-12-12",
+                  "guests": 9
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "en-past-date",
+      "language": "en",
+      "tags": [
+        "past-date"
+      ],
+      "turns": [
+        {
+          "caller": "Do you have a room for two people from October 20th to October 22nd?",
+          "expect": {
+            "tool_calls": [
+              {
+                "name": "check_availability",
+                "args": {
+                  "guests": 2
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "it-past-date",
+      "language": "it",
+      "tags": [
+        "past-date"
+      ],
+      "turns": [
+        {
+          "caller": "Avete una camera per due persone dal 20 al 22 ottobre?",
+          "expect": {
+            "tool_calls": [
+              {
+                "name": "check_availability",
+                "args": {
+                  "guests": 2
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

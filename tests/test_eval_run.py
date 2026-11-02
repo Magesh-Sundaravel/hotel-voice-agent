@@ -1,0 +1,132 @@
+"""Tests for the eval runner (seam E), using a scripted fake LLM."""
+
+import httpx
+import pytest
+
+from evals.run import Report, run_dataset
+from evals.schema import Dataset
+from src.agent.llm import AssistantMessage, ToolCall
+from tests.test_loop import ScriptedLLM
+
+AVAILABILITY_CALL = ToolCall(
+    id="c1",
+    name="check_availability",
+    arguments='{"check_in": "2026-12-10", "check_out": "2026-12-12", "guests": 2}',
+)
+
+DATASET = Dataset.model_validate(
+    {
+        "today": "2026-11-02",
+        "cases": [
+            {
+                "id": "en-case",
+                "language": "en",
+                "turns": [
+                    {
+                        "caller": "Room for two, December 10th to 12th?",
+                        "expect": {
+                            "tool_calls": [
+                                {"name": "check_availability", "args": {"guests": 2}}
+                            ]
+                        },
+                    }
+                ],
+            },
+            {
+                "id": "it-case",
+                "language": "it",
+                "turns": [
+                    {
+                        "caller": "Quanto costa una camera?",
+                        "expect": {"must_not_call_tools": True},
+                    }
+                ],
+            },
+        ],
+    }
+)
+
+
+def scripted_runs() -> ScriptedLLM:
+    """en-case passes twice. it-case passes once, then gets an English reply."""
+    en_run = [
+        AssistantMessage(content=None, tool_calls=[AVAILABILITY_CALL]),
+        AssistantMessage(content="We have rooms free. Which type would you like?"),
+    ]
+    return ScriptedLLM(
+        [
+            *en_run,
+            *en_run,
+            AssistantMessage(content="Quale data di arrivo preferisce?"),
+            AssistantMessage(content="Which date would you like to arrive?"),
+        ]
+    )
+
+
+@pytest.mark.asyncio
+async def test_pass_rates_overall_and_by_language() -> None:
+    """3 of 4 runs pass overall. English is 2/2, Italian is 1/2."""
+    report = await run_dataset(DATASET, scripted_runs(), repeats=2)
+
+    assert report.overall_pass_rate == 0.75
+    assert report.pass_rate_by_language == {"en": 1.0, "it": 0.5}
+
+
+@pytest.mark.asyncio
+async def test_flaky_cases_are_listed_with_their_failures() -> None:
+    """A case that passes once and fails once is flaky, and says why it failed."""
+    report = await run_dataset(DATASET, scripted_runs(), repeats=2)
+
+    assert report.flaky_case_ids == ["it-case"]
+    italian = next(c for c in report.cases if c.case_id == "it-case")
+    assert len(italian.failures) == 1
+    assert "language" in italian.failures[0]
+    english = next(c for c in report.cases if c.case_id == "en-case")
+    assert english.failures == []
+
+
+class FailsOnceLLM:
+    """Raises a timeout on its first call, then behaves like the wrapped LLM."""
+
+    def __init__(self, inner: ScriptedLLM) -> None:
+        """Wrap the scripted LLM."""
+        self._inner = inner
+        self._failed = False
+
+    async def complete(self, messages: list, tools: list) -> AssistantMessage:  # type: ignore[type-arg]
+        """Fail once, then delegate."""
+        if not self._failed:
+            self._failed = True
+            raise httpx.ReadTimeout("slow")
+        return await self._inner.complete(messages, tools)
+
+
+@pytest.mark.asyncio
+async def test_an_http_error_fails_that_run_and_the_rest_continue() -> None:
+    """A timeout in one run is recorded as a failure, not a crashed eval."""
+    inner = ScriptedLLM(
+        [
+            AssistantMessage(content="Quale data di arrivo preferisce?"),
+        ]
+    )
+    dataset = Dataset.model_validate(
+        {
+            "today": "2026-11-02",
+            "cases": [
+                DATASET.model_dump()["cases"][0],
+                DATASET.model_dump()["cases"][1],
+            ],
+        }
+    )
+
+    report = await run_dataset(dataset, FailsOnceLLM(inner), repeats=1)
+
+    english, italian = report.cases
+    assert english.passed_runs == 0
+    assert "request failed" in english.failures[0]
+    assert italian.passed_runs == 1
+
+
+def test_an_empty_report_has_a_zero_rate_not_a_crash() -> None:
+    """No runs means 0%, not a division by zero."""
+    assert Report(cases=[]).overall_pass_rate == 0.0
