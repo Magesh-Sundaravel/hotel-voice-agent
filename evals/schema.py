@@ -1,9 +1,12 @@
 """Schema of evals/golden.json, the source of truth for the eval dataset."""
 
 from datetime import date
+from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
+
+GOLDEN_PATH = Path(__file__).parent / "golden.json"
 
 
 class ExpectedToolCall(BaseModel):

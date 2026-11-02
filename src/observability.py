@@ -11,13 +11,14 @@ Rules this module enforces (see .claude/rules/observability.md and data.md):
 import logging
 import re
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from functools import lru_cache
 from typing import Any, Literal
 
 from langfuse import Langfuse, propagate_attributes
+from langfuse.api import NotFoundError
 from pydantic import BaseModel
 
 from src.config import Settings
@@ -90,6 +91,25 @@ def build_client(settings: Settings) -> Langfuse | None:
 def _get_client() -> Langfuse | None:
     """The process-wide client (built once, from .env / environment)."""
     return build_client(Settings())
+
+
+def is_enabled() -> bool:
+    """True when Langfuse keys are configured and the client was built."""
+    return _get_client() is not None
+
+
+def _require_client() -> Langfuse:
+    """The client for a deliberate command (sync, experiment).
+
+    Raises:
+        RuntimeError: Langfuse keys are not configured.
+    """
+    client = _get_client()
+    if client is None:
+        raise RuntimeError(
+            "Langfuse is off: set LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY"
+        )
+    return client
 
 
 class Observation:
@@ -195,6 +215,142 @@ def generation(model: str, messages: list[dict[str, Any]]) -> Any:
 def tool_span(name: str, args: Any) -> Any:
     """One tool call, named after the tool."""
     return _observe(as_type="tool", name=name, input=args)
+
+
+def push_prompt(name: str, text: str, commit_message: str) -> tuple[int, bool]:
+    """Upload prompt text to Langfuse unless the production version already has it.
+
+    Unlike tracing, this is a deliberate command, so failures are raised.
+
+    Args:
+        name: Langfuse prompt name.
+        text: The prompt, with `{{variable}}` placeholders.
+        commit_message: Recorded on the new version (the git SHA).
+
+    Returns:
+        (version, created): the production version now in Langfuse, and whether
+        this call created it.
+
+    Raises:
+        RuntimeError: Langfuse keys are not configured.
+    """
+    client = _require_client()
+    try:
+        current = client.get_prompt(name, label="production", cache_ttl_seconds=0)
+        if current.prompt == text:
+            return current.version, False
+    except NotFoundError:
+        pass
+    created = client.create_prompt(
+        name=name,
+        prompt=text,
+        type="text",
+        labels=["production"],
+        commit_message=commit_message,
+    )
+    return created.version, True
+
+
+class DatasetItemSpec(BaseModel):
+    """One Langfuse dataset item. `id` is stable, so a sync updates in place."""
+
+    id: str
+    input: dict[str, Any]
+    expected_output: dict[str, Any]
+    metadata: dict[str, Any]
+
+
+def sync_dataset(name: str, items: list[DatasetItemSpec]) -> tuple[int, int]:
+    """Make the Langfuse dataset match `items`. The repo is the source of truth.
+
+    Every write creates a dataset version, so only items that differ are written.
+    Items that are no longer in `items` are archived, which drops them from
+    future experiment runs. An archived item keeps its old input and expected
+    output, so archiving cannot blank it.
+
+    Args:
+        name: Langfuse dataset name; created if it does not exist.
+        items: The items the dataset should hold.
+
+    Returns:
+        (changed, archived): how many items were created or updated, and how many
+        were archived.
+
+    Raises:
+        RuntimeError: Langfuse keys are not configured.
+    """
+    client = _require_client()
+    try:
+        stored = {item.id: item for item in client.get_dataset(name).items}
+    except NotFoundError:
+        client.create_dataset(name=name)
+        stored = {}
+    wanted = {item.id for item in items}
+    changed = 0
+    for item in items:
+        old = stored.get(item.id)
+        if (
+            old is not None
+            and old.status == "ACTIVE"
+            and old.input == item.input
+            and old.expected_output == item.expected_output
+            and old.metadata == item.metadata
+        ):
+            continue
+        client.create_dataset_item(
+            dataset_name=name, status="ACTIVE", **item.model_dump()
+        )
+        changed += 1
+    archived = 0
+    for item_id, old in stored.items():
+        if item_id not in wanted and old.status == "ACTIVE":
+            client.create_dataset_item(
+                dataset_name=name,
+                id=item_id,
+                input=old.input,
+                expected_output=old.expected_output,
+                metadata=old.metadata,
+                status="ARCHIVED",
+            )
+            archived += 1
+    return changed, archived
+
+
+def run_experiment(
+    dataset_name: str,
+    run_name: str,
+    task: Callable[..., Any],
+    evaluator: Callable[..., Any],
+    metadata: dict[str, str],
+) -> str | None:
+    """Run `task` on every active item of a dataset, as one Langfuse experiment.
+
+    Items run one at a time (the Groq free tier is rate limited). Call this from
+    sync code: the SDK starts its own event loop for an async `task`.
+
+    Args:
+        dataset_name: Langfuse dataset to run on.
+        run_name: Unique name of this run; runs with the same name are merged.
+        task: Async function called as `task(item=...)` for each item.
+        evaluator: Called as `evaluator(output=..., ...)`; returns a score dict.
+        metadata: Short string values attached to the run and its traces.
+
+    Returns:
+        The experiment's URL in Langfuse, if the SDK gave one.
+
+    Raises:
+        RuntimeError: Langfuse keys are not configured.
+    """
+    client = _require_client()
+    result = client.get_dataset(dataset_name).run_experiment(
+        name=dataset_name,
+        run_name=run_name,
+        task=task,
+        evaluators=[evaluator],
+        max_concurrency=1,
+        metadata=metadata,
+    )
+    return result.experiment_url
 
 
 def flush() -> None:
