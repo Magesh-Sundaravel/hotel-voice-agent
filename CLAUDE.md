@@ -39,7 +39,7 @@
 3. Build with the tdd skill
 4. Add eval cases (IT + EN) to evals/golden.json, run eval-runner agent
 5. Run reviewer agent, then commit
-When something breaks, use the diagnose skill.
+When something breaks, use the diagnosing-bugs skill.
 
 ## Done means
 - Tests pass and evals don't regress
