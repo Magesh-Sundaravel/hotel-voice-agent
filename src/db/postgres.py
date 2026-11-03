@@ -148,12 +148,14 @@ class PostgresBookingRepository:
         """Book the lowest-numbered free room of the type for the whole stay.
 
         If a concurrent booking takes the chosen room first, the exclusion
-        constraint rejects the insert and the next free room is tried.
+        constraint rejects the insert and the next free room is tried. A
+        reference or idempotency-key collision is retried the same way: a new
+        reference is drawn, or the booking the other call made is returned.
         """
         for _ in range(_WRITE_ATTEMPTS):
             try:
                 return await self._create_once(new)
-            except asyncpg.ExclusionViolationError:
+            except (asyncpg.ExclusionViolationError, asyncpg.UniqueViolationError):
                 continue
         return BookingConflict(reason="no_availability")
 

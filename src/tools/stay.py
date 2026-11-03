@@ -1,7 +1,8 @@
 """Validation and pricing shared by create_booking and modify_booking."""
 
 import re
-from datetime import date
+from datetime import UTC, date, datetime
+from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel
 
@@ -9,6 +10,7 @@ from src.db.bookings import Booking
 from src.db.hotel import HotelRepository
 from src.tools.get_rates import GetRatesError, GetRatesInput, get_rates
 
+HOTEL_TZ = ZoneInfo("Europe/Rome")
 E164 = re.compile(r"^\+[1-9]\d{6,14}$")
 EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
@@ -20,6 +22,18 @@ LAST_NAME_DESCRIPTION = (
     "The last name the booking is under, as the caller spells it. Upper or lower "
     "case does not matter."
 )
+
+
+def hotel_today(now: datetime | None = None) -> date:
+    """Return the current date in the hotel's timezone (Europe/Rome).
+
+    Args:
+        now: Override for the current instant (tests).
+
+    Returns:
+        Today's date in Rome, whatever timezone the server runs in.
+    """
+    return (now or datetime.now(UTC)).astimezone(HOTEL_TZ).date()
 
 
 def clean_reference(reference: str) -> str:
