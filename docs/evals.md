@@ -39,6 +39,9 @@ Pydantic models in `evals/schema.py` are the schema; `tests/test_eval_schema.py`
 `uv run python -m evals.run`: sync the prompt and the dataset -> run every case -> score -> record one Langfuse experiment.
 `uv run python -m evals.sync` does only the sync step.
 
+Run part of the dataset while iterating: `--case ID` (repeatable) and `--tag TAG` (repeatable) pick cases by id or by tag; a case is run if it matches either. An unknown id or a tag that matches nothing is an error. The whole dataset is still synced, so nothing is archived. A partial experiment is named with a `-partial` suffix and has run metadata `cases` listing what ran, so it is never mistaken for a full run. Compare only experiments that ran the same cases.
+Example: `uv run python -m evals.run --tag booking-cancel --repeats 1`.
+
 - **Dataset sync:** golden cases become items of the Langfuse dataset `hotel-golden`, keyed by case id. The item input holds only what the caller says; the checks go in `expected_output`. Only items that changed are written (every write is a new dataset version). A case removed from `golden.json` is archived, which drops it from later runs.
 - **Experiment:** one experiment per run, named `<git sha>-v<prompt version>-<MMDD-HHMM>` (UTC). Each case is one item and gets a score `pass_rate` (the share of its repeats that passed) with the failure reasons as the comment. Traces of the run (turns, model calls, tool calls) hang under each item.
 - **Run metadata:** `git_sha` (ends in `-dirty` if the tree has uncommitted or untracked files), `prompt_version`, `model`, `tools` (names), `tools_hash` (changes when any tool's name, description or schema changes), `repeats`.

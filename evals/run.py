@@ -125,6 +125,37 @@ async def _run_case(
     )
 
 
+def select_cases(dataset: Dataset, case_ids: list[str], tags: list[str]) -> Dataset:
+    """Keep the cases whose id is in `case_ids` or that carry any of `tags`.
+
+    With neither given, every case is kept.
+
+    Args:
+        dataset: The golden dataset.
+        case_ids: Case ids to keep.
+        tags: Tags to keep; a case matches if it has at least one.
+
+    Returns:
+        A dataset with the same `today` and only the selected cases.
+
+    Raises:
+        ValueError: An id is unknown, or nothing matched.
+    """
+    if not case_ids and not tags:
+        return dataset
+    unknown = set(case_ids) - {case.id for case in dataset.cases}
+    if unknown:
+        raise ValueError(f"unknown case id: {', '.join(sorted(unknown))}")
+    cases = [
+        case
+        for case in dataset.cases
+        if case.id in case_ids or set(case.tags) & set(tags)
+    ]
+    if not cases:
+        raise ValueError(f"no case has any of the tags: {', '.join(tags)}")
+    return Dataset(today=dataset.today, cases=cases)
+
+
 async def run_dataset(dataset: Dataset, llm: LLMClient, repeats: int) -> Report:
     """Run every case `repeats` times, one after another, and summarise.
 
@@ -155,8 +186,17 @@ def tools_fingerprint(registry: dict[str, Tool]) -> str:
     return hashlib.sha256(json.dumps(specs, sort_keys=True).encode()).hexdigest()[:8]
 
 
-def run_on_langfuse(dataset: Dataset, settings: Settings, repeats: int) -> Report:
-    """Sync prompt and dataset, then run all cases as one Langfuse experiment.
+def run_on_langfuse(
+    dataset: Dataset,
+    settings: Settings,
+    repeats: int,
+    case_ids: list[str] | None = None,
+    tags: list[str] | None = None,
+) -> Report:
+    """Sync prompt and dataset, then run the cases as one Langfuse experiment.
+
+    The whole dataset is always synced (so no case is archived); only the
+    cases picked by `case_ids` / `tags` run. With neither, all cases run.
 
     Each case is one experiment item. Its score `pass_rate` is the share of its
     repeats that passed, so one run per code change is enough to compare.
@@ -166,16 +206,23 @@ def run_on_langfuse(dataset: Dataset, settings: Settings, repeats: int) -> Repor
         dataset: The golden dataset.
         settings: Groq key and model.
         repeats: How many times to run each case.
+        case_ids: Run only these case ids.
+        tags: Run only cases with any of these tags.
 
     Returns:
         The same report a local run prints.
+
+    Raises:
+        ValueError: The selection is empty or names an unknown case.
     """
+    selected = select_cases(dataset, case_ids or [], tags or [])
+    partial = len(selected.cases) < len(dataset.cases)
     sha = git_sha()
     prompt_version = sync_prompt(sha)
     sync_dataset(dataset)
     registry = spec_registry(dataset.today)
     system_prompt = build_system_prompt(dataset.today)
-    cases = {case.id: case for case in dataset.cases}
+    cases = {case.id: case for case in selected.cases}
     summaries: dict[str, CaseSummary] = {}
 
     async def task(*, item: Any, **_: Any) -> dict[str, Any]:
@@ -199,7 +246,7 @@ def run_on_langfuse(dataset: Dataset, settings: Settings, repeats: int) -> Repor
     now = datetime.now(UTC)
     url = observability.run_experiment(
         DATASET_NAME,
-        f"{sha}-v{prompt_version}-{now:%m%d-%H%M}",
+        f"{sha}-v{prompt_version}-{now:%m%d-%H%M}" + ("-partial" if partial else ""),
         task,
         evaluator,
         {
@@ -210,7 +257,9 @@ def run_on_langfuse(dataset: Dataset, settings: Settings, repeats: int) -> Repor
             "tools": ",".join(registry),
             "tools_hash": tools_fingerprint(registry),
             "repeats": str(repeats),
+            "cases": ",".join(cases) if partial else "all",
         },
+        set(cases) if partial else None,
     )
     if url:
         print(f"Langfuse experiment: {url}\n")
@@ -226,7 +275,7 @@ def run_on_langfuse(dataset: Dataset, settings: Settings, repeats: int) -> Repor
                 passed_runs=0,
                 failures=["task crashed, see the trace in Langfuse"],
             )
-            for case in dataset.cases
+            for case in selected.cases
         ]
     )
 
@@ -266,14 +315,34 @@ def main() -> None:
         metavar="N",
         help="runs per case",
     )
+    parser.add_argument(
+        "--case",
+        action="append",
+        default=[],
+        metavar="ID",
+        help="run only this case id (repeatable)",
+    )
+    parser.add_argument(
+        "--tag",
+        action="append",
+        default=[],
+        metavar="TAG",
+        help="run only cases with this tag (repeatable)",
+    )
     args = parser.parse_args()
     settings = Settings()
     dataset = Dataset.model_validate_json(GOLDEN_PATH.read_text())
-    if observability.is_enabled():
-        report = run_on_langfuse(dataset, settings, args.repeats)
-    else:
-        print("Langfuse keys not set: running locally, nothing is uploaded.\n")
-        report = asyncio.run(_run_local(dataset, settings, args.repeats))
+    try:
+        if observability.is_enabled():
+            report = run_on_langfuse(
+                dataset, settings, args.repeats, args.case, args.tag
+            )
+        else:
+            print("Langfuse keys not set: running locally, nothing is uploaded.\n")
+            selected = select_cases(dataset, args.case, args.tag)
+            report = asyncio.run(_run_local(selected, settings, args.repeats))
+    except ValueError as error:
+        parser.error(str(error))
     _print_report(report)
     observability.flush()
 

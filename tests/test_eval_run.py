@@ -3,7 +3,7 @@
 import httpx
 import pytest
 
-from evals.run import Report, run_dataset
+from evals.run import Report, run_dataset, select_cases
 from evals.schema import Dataset
 from src.agent.llm import AssistantMessage, ToolCall
 from tests.test_loop import ScriptedLLM
@@ -130,3 +130,32 @@ async def test_an_http_error_fails_that_run_and_the_rest_continue() -> None:
 def test_an_empty_report_has_a_zero_rate_not_a_crash() -> None:
     """No runs means 0%, not a division by zero."""
     assert Report(cases=[]).overall_pass_rate == 0.0
+
+
+def _tagged() -> Dataset:
+    """Two cases: en-case tagged `a`, it-case tagged `b`."""
+    data = DATASET.model_dump(mode="json")
+    data["cases"][0]["tags"] = ["a"]
+    data["cases"][1]["tags"] = ["b"]
+    return Dataset.model_validate(data)
+
+
+def test_no_selection_keeps_every_case() -> None:
+    """Without --case or --tag nothing is filtered."""
+    assert select_cases(_tagged(), [], []) == _tagged()
+
+
+def test_cases_are_picked_by_id_or_by_tag() -> None:
+    """An id or any matching tag selects a case."""
+    assert [c.id for c in select_cases(_tagged(), ["it-case"], []).cases] == ["it-case"]
+    assert [c.id for c in select_cases(_tagged(), [], ["a"]).cases] == ["en-case"]
+    both = select_cases(_tagged(), ["it-case"], ["a"])
+    assert [c.id for c in both.cases] == ["en-case", "it-case"]
+
+
+def test_an_unknown_id_or_empty_tag_match_is_an_error() -> None:
+    """A typo must not silently run nothing."""
+    with pytest.raises(ValueError, match="unknown case id: nope"):
+        select_cases(_tagged(), ["nope"], [])
+    with pytest.raises(ValueError, match="no case has any of the tags: zzz"):
+        select_cases(_tagged(), [], ["zzz"])

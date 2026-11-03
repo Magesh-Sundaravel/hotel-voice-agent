@@ -322,8 +322,9 @@ def run_experiment(
     task: Callable[..., Any],
     evaluator: Callable[..., Any],
     metadata: dict[str, str],
+    item_ids: set[str] | None = None,
 ) -> str | None:
-    """Run `task` on every active item of a dataset, as one Langfuse experiment.
+    """Run `task` on the active items of a dataset, as one Langfuse experiment.
 
     Items run one at a time (the Groq free tier is rate limited). Call this from
     sync code: the SDK starts its own event loop for an async `task`.
@@ -334,6 +335,7 @@ def run_experiment(
         task: Async function called as `task(item=...)` for each item.
         evaluator: Called as `evaluator(output=..., ...)`; returns a score dict.
         metadata: Short string values attached to the run and its traces.
+        item_ids: Run only the items with these ids; None runs them all.
 
     Returns:
         The experiment's URL in Langfuse, if the SDK gave one.
@@ -342,7 +344,10 @@ def run_experiment(
         RuntimeError: Langfuse keys are not configured.
     """
     client = _require_client()
-    result = client.get_dataset(dataset_name).run_experiment(
+    dataset = client.get_dataset(dataset_name)
+    if item_ids is not None:
+        dataset.items = [item for item in dataset.items if item.id in item_ids]
+    result = dataset.run_experiment(
         name=dataset_name,
         run_name=run_name,
         task=task,
