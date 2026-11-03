@@ -1,14 +1,17 @@
 """cancel_booking tool: cancel a booking and say whether it was late."""
 
 from datetime import UTC, datetime, time, timedelta
-from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, Field
 
 from src.db.bookings import BookingRepository
-from src.tools.stay import LAST_NAME_DESCRIPTION, REFERENCE_DESCRIPTION, clean_reference
+from src.tools.stay import (
+    HOTEL_TZ,
+    LAST_NAME_DESCRIPTION,
+    REFERENCE_DESCRIPTION,
+    clean_reference,
+)
 
-HOTEL_TZ = ZoneInfo("Europe/Rome")
 CHECK_IN_TIME = time(15, 0)
 FREE_CANCELLATION = timedelta(hours=48)
 

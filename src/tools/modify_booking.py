@@ -13,6 +13,7 @@ from src.tools.stay import (
     BookingDetails,
     clean_reference,
     details,
+    hotel_today,
     price_stay,
 )
 
@@ -66,6 +67,7 @@ async def modify_booking(
     Returns:
         The updated booking, or an error with a spoken-friendly reason.
     """
+    today = today or hotel_today()
     if all(v is None for v in (inp.check_in, inp.check_out, inp.adults, inp.room_type)):
         return ModifyBookingError(reason="nothing_to_change")
     reference = clean_reference(inp.reference)
@@ -74,7 +76,7 @@ async def modify_booking(
         return ModifyBookingError(reason="not_found")
     if current.status == "cancelled":
         return ModifyBookingError(reason="cancelled")
-    if current.check_out <= (today or date.today()):
+    if current.check_out <= today:
         return ModifyBookingError(reason="past_booking")
     check_in = inp.check_in or current.check_in
     check_out = inp.check_out or current.check_out
