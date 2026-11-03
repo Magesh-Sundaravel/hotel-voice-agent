@@ -185,8 +185,9 @@ class FakeExperiment:
         task: Callable[..., Any],
         evaluator: Callable[..., Any],
         metadata: dict[str, str],
+        item_ids: set[str] | None = None,
     ) -> str:
-        """Run the task and evaluator on every case, in order, like the SDK."""
+        """Run the task and evaluator on the chosen cases, in order, like the SDK."""
         import asyncio
 
         self.calls.append(
@@ -195,6 +196,8 @@ class FakeExperiment:
 
         async def go() -> None:
             for case in self.dataset.cases:
+                if item_ids is not None and case.id not in item_ids:
+                    continue
                 output = await task(item=SimpleNamespace(id=case.id))
                 self.scores.append(evaluator(output=output))
 
@@ -270,3 +273,23 @@ def test_a_case_whose_task_crashed_counts_as_failed_not_missing(
     assert report.overall_pass_rate == 0.0
     assert [c.case_id for c in report.cases] == ["en-case", "it-case"]
     assert "crashed" in report.cases[0].failures[0]
+
+
+def test_a_partial_run_runs_only_the_chosen_case_and_says_so(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The whole dataset is synced, but only the chosen case runs and is named partial."""
+    fake = FakeExperiment(DATASET)
+    _wire(monkeypatch, fake)
+    synced: list[Dataset] = []
+    monkeypatch.setattr(run, "sync_dataset", synced.append)
+
+    report = run.run_on_langfuse(
+        DATASET, Settings(groq_api_key="k"), repeats=1, case_ids=["en-case"]
+    )
+
+    assert [c.case_id for c in report.cases] == ["en-case"]
+    assert len(fake.scores) == 1
+    assert synced == [DATASET]
+    assert fake.calls[0]["run_name"].endswith("-partial")
+    assert fake.calls[0]["metadata"]["cases"] == "en-case"
