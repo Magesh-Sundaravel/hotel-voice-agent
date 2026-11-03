@@ -22,6 +22,8 @@ class TurnExpect(BaseModel):
     tool_calls: list[ExpectedToolCall] = []
     must_not_call_tools: bool = False
     exclusive: bool = False
+    # Tools that must not be called this turn, e.g. a write before the caller's yes.
+    forbidden_tools: list[str] = []
 
 
 class Turn(BaseModel):
@@ -36,6 +38,7 @@ class EvalCase(BaseModel):
 
     id: str
     language: Literal["it", "en"]
+    caller_phone: str | None = None  # the caller ID; None means withheld
     tags: list[str] = []
     turns: list[Turn] = Field(min_length=1)
 

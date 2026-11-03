@@ -33,9 +33,9 @@ Why these choices: [docs/decisions/](docs/decisions/).
 ## What works today
 
 - Agent loop with native tool calling and no graph framework (`src/agent/`)
-- Tools: `check_availability` and `get_rates`, backed by an in-memory seed repository (`src/tools/`, `src/db/`)
+- Tools: `check_availability`, `get_rates`, `lookup_guest`, `create_booking`, `get_booking`, `modify_booking` and `cancel_booking`, backed by an in-memory seed repository in the CLI and evals, with a Postgres version tested against Supabase (`src/tools/`, `src/db/`)
 - Langfuse tracing of model calls and eval runs, with PII masking (`src/observability.py`)
-- Bilingual golden eval dataset (14 cases, Italian and English) with a runner and scorer (`evals/`)
+- Bilingual golden eval dataset (24 cases, Italian and English) with a runner and scorer (`evals/`)
 - `/health` endpoint, Dockerfile and Compose file
 
 Tool contracts are in [docs/tools.md](docs/tools.md).
@@ -53,6 +53,8 @@ Chat with the agent in the terminal, no voice involved:
 
 ```bash
 uv run python -m src.agent.cli
+# call as returning guest Giulia Rossi (seed booking 482913):
+uv run python -m src.agent.cli --caller-phone +12025550101
 ```
 
 Run the API:
@@ -97,8 +99,9 @@ docs/        architecture, tool contracts, data model, decisions, vendor notes
 - [ ] Authenticated tool webhooks with a ~1.5 s time budget
 - [ ] ElevenLabs agent and Telnyx number configuration (`src/voice/`)
 - [x] Supabase schema, migrations, seed and Postgres repository for inventory and rates
-- [ ] Repository writes for guests, reservations and the call log
-- [ ] Booking tools: create, modify and cancel a reservation, guest lookup by caller ID
+- [x] Repository writes for guests and reservations
+- [ ] Call log writes (needs the phone path)
+- [x] Booking tools: create, modify and cancel a reservation, guest lookup by caller ID
 - [ ] Gmail confirmation emails with an `.ics` invite
 - [ ] More eval cases: booking, returning callers, tool failure, language switching
 - [ ] CI for tests, lint and evals

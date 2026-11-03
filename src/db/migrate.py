@@ -9,24 +9,15 @@ Applied files are recorded in schema_migrations, so re-running is safe.
 
 import argparse
 import asyncio
-from datetime import date, timedelta
 from pathlib import Path
+from uuid import UUID
 
 import asyncpg
 
 from src.config import Settings
-from src.db.hotel import Rate
-from src.db.seed import RATES, ROOM_TYPES, STAYS
+from src.db.seed import BOOKINGS, RATES, ROOM_TYPES
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "db" / "migrations"
-
-# Fake guests for the seed stays. Phones are in +1 202-555-0100..0199, a range
-# reserved for fiction, so they can never reach a real person.
-_SEED_GUESTS = [
-    ("Giulia", "Rossi", "+12025550101", "giulia.rossi@example.com", "it"),
-    ("James", "Carter", "+12025550102", "james.carter@example.com", "en"),
-    ("Marco", "Bianchi", "+12025550103", None, "it"),
-]
 
 
 async def apply_migrations(conn: asyncpg.Connection) -> list[str]:
@@ -60,23 +51,12 @@ async def apply_migrations(conn: asyncpg.Connection) -> list[str]:
     return applied
 
 
-def _stay_total_cents(rates: list[Rate], check_in: date, check_out: date) -> int:
-    """Price a seed stay night by night from the seed rates."""
-    total = 0
-    night = check_in
-    while night < check_out:
-        rate = next(r for r in rates if r.valid_from <= night <= r.valid_to)
-        total += rate.price_per_night_eur * 100
-        night += timedelta(days=1)
-    return total
-
-
 async def load_seed(conn: asyncpg.Connection) -> bool:
     """Insert the seed hotel in one transaction, unless room types already exist.
 
     Each room type gets its own floor (Superior is 101 to 110, Deluxe 201 to 208,
     and so on). Each seed stay goes to the lowest-numbered room of its type that
-    no earlier seed stay uses, and to the next fake guest in turn.
+    no earlier seed booking uses, under its fixed reference.
 
     Args:
         conn: Connection to a migrated database.
@@ -116,28 +96,30 @@ async def load_seed(conn: asyncpg.Connection) -> bool:
                 )
             rooms_by_type[rt.name] = room_ids
 
-        guest_ids = [
-            await conn.fetchval(
-                "insert into guests (first_name, last_name, phone, email, language)"
-                " values ($1, $2, $3, $4, $5) returning id",
-                *guest,
-            )
-            for guest in _SEED_GUESTS
-        ]
-
-        for i, stay in enumerate(STAYS):
-            type_rates = [r for r in RATES if r.room_type == stay.room_type]
+        guest_ids: dict[str, UUID] = {}
+        for reference, new in BOOKINGS:
+            if new.phone not in guest_ids:
+                guest_ids[new.phone] = await conn.fetchval(
+                    "insert into guests (first_name, last_name, phone, email, language)"
+                    " values ($1, $2, $3, $4, $5) returning id",
+                    new.first_name,
+                    new.last_name,
+                    new.phone,
+                    new.email,
+                    new.language,
+                )
             await conn.execute(
                 "insert into reservations (reference, guest_id, room_id, check_in,"
                 " check_out, adults, status, total_cents, idempotency_key)"
-                " values ($1, $2, $3, $4, $5, 2, 'confirmed', $6, $7)",
-                f"SEED{i + 1:02d}",
-                guest_ids[i % len(guest_ids)],
-                rooms_by_type[stay.room_type].pop(0),
-                stay.check_in,
-                stay.check_out,
-                _stay_total_cents(type_rates, stay.check_in, stay.check_out),
-                f"seed-{i + 1}",
+                " values ($1, $2, $3, $4, $5, $6, 'confirmed', $7, $8)",
+                reference,
+                guest_ids[new.phone],
+                rooms_by_type[new.room_type].pop(0),
+                new.check_in,
+                new.check_out,
+                new.adults,
+                new.total_cents,
+                new.idempotency_key,
             )
     return True
 

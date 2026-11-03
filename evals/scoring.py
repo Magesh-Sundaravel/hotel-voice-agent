@@ -153,6 +153,9 @@ def score_turn(
             failures.append(
                 f"expected tool call {expected.name} {expected.args} was not made"
             )
+    for name in dict.fromkeys(c.name for c in calls):
+        if name in expect.forbidden_tools:
+            failures.append(f"called {name}, which this turn forbids")
     if expect.must_not_call_tools and calls:
         failures.append(f"expected no tool calls but made: {[c.name for c in calls]}")
     if not reply.strip():

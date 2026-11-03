@@ -40,3 +40,88 @@ The model decides when and how to call a tool from its description and its param
 - Idempotent: n/a (read-only)
 - Typical latency: under 300 ms
 - A stay that crosses the low/high season boundary is priced night by night, hence `per_night_eur`.
+
+## Call context (not a tool)
+The booking tools need two facts the model must never generate: the call's `call_id` and the caller's phone (E.164, or none when the number is withheld). They come from a `CallContext` bound when the registry is built and never appear in a tool's parameters. The text CLI makes a random `call_id` and takes `--caller-phone`. Each eval case sets its own caller phone, or none. In step 1 the ElevenLabs webhook fills the same object (`system__conversation_id`, `system__caller_id`).
+
+Rules shared by the booking tools:
+- The agent reads the full booking back and gets an explicit yes before `create_booking`, `modify_booking` or `cancel_booking`.
+- `reference` is 6 digits, said digit by digit.
+- `get_booking`, `modify_booking` and `cancel_booking` need the reference **and** the guest's last name (any case). A wrong reference and a wrong name give the same `not_found`, so a caller cannot probe which references exist.
+- Prices are always computed by the server from `rates`; the model never sends a price.
+- Policy: free cancellation until 48 hours before check-in, which is 15:00 Europe/Rome on the arrival day.
+
+## lookup_guest
+- Purpose: find out whether the caller is a returning guest, from their caller ID.
+- Use when: the caller wants to book and you need their name. Confirm it ("am I speaking with Giulia Rossi?") before using anything stored. If they say no, they are someone else on that phone: ask for their own mobile number and pass it to create_booking.
+- Does not: search by name, read a booking, or create a guest (guests are created by create_booking).
+- Input: none (the caller ID comes from the call context)
+- Output: {ok: true, found: true, first_name: str, last_name: str, has_email: bool} | {ok: true, found: false}
+- `found: false` covers both "no match" and "number withheld"; either way, ask for the name.
+- The stored email and phone are never returned, only whether an email is on file.
+- Side effects: none
+- Idempotent: n/a (read-only)
+- Typical latency: under 300 ms
+
+## create_booking
+- Purpose: book one room for a stay.
+- Use when: check_availability has shown the room type is free, get_rates has priced it, you have the guest's first and last name, and the caller has said yes to the full read-back (dates, room type, adults, total price).
+- Does not: book more than one room, take payment, or send the confirmation email (that comes later).
+- Input: room_type: str (any case), check_in: date, check_out: date (exclusive), adults: int (at least 1), first_name: str, last_name: str, language: "it" | "en" (the language the caller is speaking), email: str | null (optional; spelled back once before booking), phone: str | null (E.164; only when the caller ID is withheld, or the caller is not the guest lookup_guest found)
+- The guest's phone is `phone` if given, otherwise the caller ID. A guest with that phone and the same name (any case) is reused, and a new email replaces the stored one. Name and phone are never overwritten.
+- The room is the lowest-numbered free room of the type for the whole stay.
+- Output: {ok: true, reference: str, room_type: str, check_in: date, check_out: date, nights: int, adults: int, total_eur: int, email_on_file: bool} | {ok: false, reason: str}
+- Reasons:
+  - invalid_dates: same rules as check_availability, including the 30 night cap
+  - invalid_guests: adults below 1
+  - unknown_room_type: not one of the hotel's room types
+  - too_many_guests: more adults than this room type holds
+  - no_availability: no room of the type is free for the whole stay (it may have been taken during the call); offer the other free types
+  - no_rate_for_dates: some night has no price set
+  - phone_required: no `phone` was given and the caller ID is withheld; ask for a mobile number
+  - invalid_phone: the `phone` given is not in international format (E.164, with the country code); ask again
+  - phone_belongs_to_other_guest: the phone is on file under a different name; ask for the caller's own number
+  - invalid_email: the email is not a valid address; spell it back again
+- Side effects: writes a reservation, and a guest (insert, or email update)
+- Idempotent: yes (key: call_id + room type + dates + phone). A retried call returns the same reservation.
+- Typical latency: under 500 ms (one transaction)
+
+## get_booking
+- Purpose: read back an existing booking.
+- Use when: the caller wants to check, change or cancel a booking. Always call it first and read the details back before modify_booking or cancel_booking.
+- Does not: change anything, or find a booking without its reference.
+- Input: reference: str (6 digits), last_name: str (any case)
+- Output: {ok: true, reference: str, status: "confirmed" | "cancelled", first_name: str, room_type: str, check_in: date, check_out: date, nights: int, adults: int, total_eur: int} | {ok: false, reason: str}
+- Reasons: not_found (no booking with that reference and last name)
+- Side effects: none
+- Idempotent: n/a (read-only)
+- Typical latency: under 300 ms
+
+## modify_booking
+- Purpose: change the dates, the number of adults or the room type of a confirmed booking, keeping its reference.
+- Use when: get_booking has found the booking, get_rates has priced the new stay, and the caller has said yes to the new details and new total.
+- Does not: cancel (use cancel_booking), change the guest's name, or modify a cancelled or finished stay.
+- Input: reference: str, last_name: str, check_in: date | null, check_out: date | null, adults: int | null, room_type: str | null (at least one of the last four)
+- Availability is checked as if this booking did not exist. The guest keeps the same room when it is still free and of the requested type; otherwise they get the lowest-numbered free room. The total is repriced.
+- Output: same as get_booking | {ok: false, reason: str}
+- Reasons:
+  - not_found
+  - cancelled: the booking is cancelled; offer a new booking instead
+  - past_booking: the stay has already ended
+  - nothing_to_change: no field was given
+  - invalid_dates, invalid_guests, unknown_room_type, too_many_guests, no_availability, no_rate_for_dates: same as create_booking
+- Side effects: updates the reservation
+- Idempotent: yes. Applying the same change again returns the same booking.
+- Typical latency: under 500 ms (one transaction)
+
+## cancel_booking
+- Purpose: cancel a booking.
+- Use when: get_booking has found the booking and the caller has said yes to cancelling it.
+- Does not: refund or charge anything, or cancel a stay that has already ended.
+- Input: reference: str, last_name: str
+- Output: {ok: true, reference: str, late_cancellation: bool} | {ok: false, reason: str}
+- `late_cancellation` is true when the booking was cancelled less than 48 hours before check-in. Tell the caller the cancellation policy charge may apply. Do not name an amount.
+- Reasons: not_found, past_booking (the stay has already ended)
+- Side effects: sets the reservation to cancelled, which frees the room
+- Idempotent: yes (by reference). Cancelling an already cancelled booking returns ok with its original `late_cancellation`.
+- Typical latency: under 300 ms

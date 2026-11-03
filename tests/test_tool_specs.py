@@ -5,19 +5,48 @@ import pytest
 from src.agent.registry import build_registry
 from src.db.seed import seed_repository
 from src.tools import MAX_STAY_NIGHTS
+from src.tools.context import CallContext
 
 # Every `reason` a tool can return. The description must name them all, so the
 # model can put each one into plain words. Keep in sync with docs/tools.md.
 REASONS = {
     "check_availability": {"invalid_dates", "invalid_guests", "too_many_guests"},
     "get_rates": {"unknown_room_type", "invalid_dates", "no_rate_for_dates"},
+    "lookup_guest": set(),
+    "create_booking": {
+        "invalid_dates",
+        "invalid_guests",
+        "unknown_room_type",
+        "too_many_guests",
+        "no_availability",
+        "no_rate_for_dates",
+        "phone_required",
+        "invalid_phone",
+        "phone_belongs_to_other_guest",
+        "invalid_email",
+    },
+    "get_booking": {"not_found"},
+    "modify_booking": {
+        "not_found",
+        "cancelled",
+        "past_booking",
+        "nothing_to_change",
+        "invalid_dates",
+        "invalid_guests",
+        "unknown_room_type",
+        "too_many_guests",
+        "no_availability",
+        "no_rate_for_dates",
+    },
+    "cancel_booking": {"not_found", "past_booking"},
 }
 
 
 @pytest.fixture
 def specs() -> dict[str, dict]:  # type: ignore[type-arg]
     """The tool specs exactly as they are sent to the model."""
-    registry = build_registry(seed_repository())
+    repo = seed_repository()
+    registry = build_registry(repo, repo, CallContext(call_id="specs"))
     return {name: tool.spec().model_dump() for name, tool in registry.items()}
 
 
@@ -44,8 +73,14 @@ def test_descriptions_name_every_error_reason(specs: dict[str, dict]) -> None:  
 
 def test_descriptions_state_the_real_stay_limit(specs: dict[str, dict]) -> None:  # type: ignore[type-arg]
     """The longest stay comes from the code, so the text cannot drift from it."""
-    for name in REASONS:
-        assert f"{MAX_STAY_NIGHTS} nights" in specs[name]["description"], name
+    for name, reasons in REASONS.items():
+        if "invalid_dates" in reasons:
+            assert f"{MAX_STAY_NIGHTS} nights" in specs[name]["description"], name
+
+
+def test_every_tool_is_covered_here(specs: dict[str, dict]) -> None:  # type: ignore[type-arg]
+    """A new tool must list its reasons above, or the checks skip it silently."""
+    assert set(specs) == set(REASONS)
 
 
 def test_each_tool_points_at_the_other_for_what_it_does_not_do(
