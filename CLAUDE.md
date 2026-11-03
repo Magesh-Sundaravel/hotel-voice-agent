@@ -25,6 +25,7 @@
 - Run:     `uv run uvicorn src.main:app --reload`
 - Test:    `uv run pytest -q`
 - Evals:   `uv run python -m evals.run`
+- Migrate: `uv run python -m src.db.migrate [--seed]`
 
 ## Docs (read when relevant, not upfront)
 - docs/architecture.md: end-to-end call flow. Read before changes that cross modules.

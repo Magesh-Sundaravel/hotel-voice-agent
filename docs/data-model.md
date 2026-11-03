@@ -1,6 +1,7 @@
 # Data model (Supabase, PMS-style)
 
-Hosted Supabase free tier. All access goes through `src/db/`. Everything here is fake data (see `.claude/rules/data.md`).
+Hosted Supabase free tier, reached directly over asyncpg (see docs/decisions/004-asyncpg-not-supabase-client.md). All access goes through `src/db/`.
+Schema: `db/migrations/*.sql`, applied with `uv run python -m src.db.migrate` (add `--seed` to load the seed hotel from `src/db/seed.py`). Everything here is fake data (see `.claude/rules/data.md`).
 Dates are in Europe/Rome. A stay runs from `check_in` to `check_out`, and the check-out day is exclusive (the room is free for a new guest that day).
 Room availability lives only here. There is no calendar integration.
 
@@ -44,7 +45,7 @@ A guest row is created only when a booking is made.
 | room_type_id | uuid fk room_types | |
 | valid_from | date | inclusive |
 | valid_to | date | inclusive |
-| price_per_night_cents | int | |
+| price_per_night_cents | int | whole euros only (multiple of 100), because prices are quoted in euros |
 | currency | text | `EUR` |
 
 Two seasons per room type: low (Nov to Mar) and high (Apr to Oct). No weekend uplift.

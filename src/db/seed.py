@@ -1,4 +1,8 @@
-"""Fake seed data for the local CLI. Fictional, per docs/data-model.md."""
+"""Fake seed data. Fictional, per docs/data-model.md.
+
+The single source for the seed hotel: the in-memory repository (CLI, evals, tests)
+and the Postgres seed loader (src/db/migrate.py) both read these lists.
+"""
 
 from datetime import date
 
@@ -22,36 +26,39 @@ _SEASONS = [
     (date(2027, 11, 1), date(2028, 3, 31), 3),
 ]
 
+ROOM_TYPES = [RoomType(name=n, max_guests=g, rooms=r) for n, g, r, _, _ in _ROOMS]
+
+RATES = [
+    Rate(
+        room_type=row[0],
+        valid_from=start,
+        valid_to=end,
+        price_per_night_eur=row[price_col],
+    )
+    for row in _ROOMS
+    for start, end, price_col in _SEASONS
+]
+
+# A few overlapping stays to exercise conflicts.
+STAYS = [
+    Stay(
+        room_type="Barberini Penthouse Suite",
+        check_in=date(2026, 12, 24),
+        check_out=date(2026, 12, 28),
+    ),
+    *[
+        Stay(
+            room_type="Suite",
+            check_in=date(2026, 12, 30),
+            check_out=date(2027, 1, 3),
+        )
+        for _ in range(2)
+    ],
+]
+
 
 def seed_repository() -> InMemoryHotelRepository:
-    """Build the seed hotel with a few overlapping stays to exercise conflicts."""
+    """Build the in-memory seed hotel."""
     return InMemoryHotelRepository(
-        room_types=[
-            RoomType(name=n, max_guests=g, rooms=r) for n, g, r, _, _ in _ROOMS
-        ],
-        rates=[
-            Rate(
-                room_type=row[0],
-                valid_from=start,
-                valid_to=end,
-                price_per_night_eur=row[price_col],
-            )
-            for row in _ROOMS
-            for start, end, price_col in _SEASONS
-        ],
-        stays=[
-            Stay(
-                room_type="Barberini Penthouse Suite",
-                check_in=date(2026, 12, 24),
-                check_out=date(2026, 12, 28),
-            ),
-            *[
-                Stay(
-                    room_type="Suite",
-                    check_in=date(2026, 12, 30),
-                    check_out=date(2027, 1, 3),
-                )
-                for _ in range(2)
-            ],
-        ],
+        room_types=list(ROOM_TYPES), rates=list(RATES), stays=list(STAYS)
     )

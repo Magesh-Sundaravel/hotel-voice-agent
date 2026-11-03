@@ -2,7 +2,7 @@
 
 A 24/7 AI receptionist that answers hotel phone calls in Italian and English. Portfolio project.
 
-> **Status: work in progress.** The agent loop, two read-only tools, tracing and an eval suite work today and can be tried in a text REPL. The phone path (ElevenLabs and Telnyx wiring, `/llm` proxy, tool webhooks) and the Supabase-backed data layer are not built yet. See [Roadmap](#roadmap).
+> **Status: work in progress.** The agent loop, two read-only tools, tracing and an eval suite work today and can be tried in a text REPL. The phone path (ElevenLabs and Telnyx wiring, `/llm` proxy, tool webhooks) is not built yet. The Supabase schema and a Postgres repository exist, but the app doesn't use them until the phone path is wired. See [Roadmap](#roadmap).
 
 ## How it will work
 
@@ -78,7 +78,7 @@ Evals send traces to Langfuse, so set the `LANGFUSE_*` variables first. The data
 src/agent/   system prompt, LLM client, agent loop, tool registry, text CLI
 src/tools/   one module per tool
 src/voice/   ElevenLabs and Telnyx glue (not built yet)
-src/db/      all data access (Supabase later; in-memory for now)
+src/db/      all data access: Postgres on Supabase, plus an in-memory repo for the CLI, tests and evals
 tests/       unit tests
 evals/       golden dataset (source of truth) and runner
 docs/        architecture, tool contracts, data model, decisions, vendor notes
@@ -96,7 +96,8 @@ docs/        architecture, tool contracts, data model, decisions, vendor notes
 - [ ] `/llm` proxy that streams to Groq in the OpenAI format ElevenLabs expects
 - [ ] Authenticated tool webhooks with a ~1.5 s time budget
 - [ ] ElevenLabs agent and Telnyx number configuration (`src/voice/`)
-- [ ] Supabase repository, schema and migrations (guests, reservations, call log)
+- [x] Supabase schema, migrations, seed and Postgres repository for inventory and rates
+- [ ] Repository writes for guests, reservations and the call log
 - [ ] Booking tools: create, modify and cancel a reservation, guest lookup by caller ID
 - [ ] Gmail confirmation emails with an `.ics` invite
 - [ ] More eval cases: booking, returning callers, tool failure, language switching
