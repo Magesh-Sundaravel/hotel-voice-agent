@@ -4,9 +4,10 @@ The single source for the seed hotel: the in-memory repository (CLI, evals, test
 and the Postgres seed loader (src/db/migrate.py) both read these lists.
 """
 
-from datetime import date
+from datetime import date, timedelta
 
-from src.db.hotel import InMemoryHotelRepository, Rate, RoomType, Stay
+from src.db.bookings import InMemoryBookingRepository, NewBooking
+from src.db.hotel import Rate, RoomType
 
 # name, max_guests, rooms, low-season EUR/night, high-season EUR/night
 _ROOMS = [
@@ -39,26 +40,70 @@ RATES = [
     for start, end, price_col in _SEASONS
 ]
 
-# A few overlapping stays to exercise conflicts.
-STAYS = [
-    Stay(
-        room_type="Barberini Penthouse Suite",
-        check_in=date(2026, 12, 24),
-        check_out=date(2026, 12, 28),
-    ),
-    *[
-        Stay(
-            room_type="Suite",
-            check_in=date(2026, 12, 30),
-            check_out=date(2027, 1, 3),
+
+def _total_cents(room_type: str, check_in: date, check_out: date) -> int:
+    """Price a seed stay night by night from the seed rates."""
+    total = 0
+    night = check_in
+    while night < check_out:
+        rate = next(
+            r
+            for r in RATES
+            if r.room_type == room_type and r.valid_from <= night <= r.valid_to
         )
-        for _ in range(2)
-    ],
+        total += rate.price_per_night_eur * 100
+        night += timedelta(days=1)
+    return total
+
+
+# Fake guests. Phones are in +1 202-555-0100..0199, a range reserved for fiction,
+# so they can never reach a real person.
+_GIULIA = ("Giulia", "Rossi", "+12025550101", "giulia.rossi@example.com", "it")
+_JAMES = ("James", "Carter", "+12025550102", "james.carter@example.com", "en")
+_MARCO = ("Marco", "Bianchi", "+12025550103", None, "it")
+
+
+def _booking(
+    reference: str,
+    guest: tuple[str, str, str, str | None, str],
+    room_type: str,
+    check_in: date,
+    check_out: date,
+) -> tuple[str, NewBooking]:
+    """A seed booking with a fixed reference, so evals can ask about it."""
+    first_name, last_name, phone, email, language = guest
+    return reference, NewBooking(
+        idempotency_key=f"seed-{reference}",
+        room_type=room_type,
+        check_in=check_in,
+        check_out=check_out,
+        adults=2,
+        total_cents=_total_cents(room_type, check_in, check_out),
+        first_name=first_name,
+        last_name=last_name,
+        phone=phone,
+        email=email,
+        language=language,  # type: ignore[arg-type]
+    )
+
+
+# Overlapping stays to exercise conflicts: the only Penthouse over Christmas, and
+# both Suites over New Year.
+BOOKINGS = [
+    _booking(
+        "482913",
+        _GIULIA,
+        "Barberini Penthouse Suite",
+        date(2026, 12, 24),
+        date(2026, 12, 28),
+    ),
+    _booking("615204", _JAMES, "Suite", date(2026, 12, 30), date(2027, 1, 3)),
+    _booking("730158", _MARCO, "Suite", date(2026, 12, 30), date(2027, 1, 3)),
 ]
 
 
-def seed_repository() -> InMemoryHotelRepository:
-    """Build the in-memory seed hotel."""
-    return InMemoryHotelRepository(
-        room_types=list(ROOM_TYPES), rates=list(RATES), stays=list(STAYS)
+def seed_repository() -> InMemoryBookingRepository:
+    """Build the in-memory seed hotel with its guests and bookings."""
+    return InMemoryBookingRepository(
+        room_types=list(ROOM_TYPES), rates=list(RATES), stays=[], bookings=BOOKINGS
     )

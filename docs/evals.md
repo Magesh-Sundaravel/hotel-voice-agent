@@ -22,14 +22,18 @@ Pydantic models in `evals/schema.py` are the schema; `tests/test_eval_schema.py`
       "expect": {
         "tool_calls": [ {"name": "check_availability", "args": {"guests": 2}} ],
         "must_not_call_tools": false,
-        "exclusive": false
-      } } ] } ] }
+        "exclusive": false,
+        "forbidden_tools": ["create_booking"]   // must not be called this turn
+      } } ],
+    "caller_phone": "+12025550101" } ] }  // optional caller ID; absent = withheld
 ```
 
-- Cases run against the seed repository (`src/db/seed.py`), so tool results are fixed.
+- Cases run against the seed repository (`src/db/seed.py`), so tool results are fixed. Every run of a case gets a fresh copy, so a booking made in one run never leaks into another.
+- The seed bookings have fixed references: 482913 (Giulia Rossi, Penthouse, 24 to 28 December 2026), 615204 (James Carter, Suite) and 730158 (Marco Bianchi, Suite), both 30 December to 3 January. Seed guest phones are +12025550101 to 0103.
+- `forbidden_tools` is how a case checks that the agent waits for the caller's yes: the turn that reads a booking back forbids the write, and the caller's yes turn expects it.
 - Callers are scripted. There is no simulated-caller LLM.
-- Tags in use: `relative-date`, `missing-info`, `limited-availability`, `season-boundary`, `too-many-guests`, `past-date`.
-- Tags planned, no case yet (they need checks the scorer does not have): `out-of-scope` (a booking request we cannot do yet), `language-switch`.
+- Tags in use: `relative-date`, `missing-info`, `limited-availability`, `season-boundary`, `too-many-guests`, `past-date`, `booking-read`, `booking-create`, `booking-modify`, `booking-cancel`, `returning-caller`, `confirm-before-write`.
+- Tags planned, no case yet (they need checks the scorer does not have): `language-switch`.
 
 ## Running
 `uv run python -m evals.run`: sync the prompt and the dataset -> run every case -> score -> record one Langfuse experiment.

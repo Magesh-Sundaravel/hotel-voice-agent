@@ -13,7 +13,9 @@ from src import observability
 from src.agent.llm import AssistantMessage, ChatMessage, ToolCall, ToolSpec
 from src.agent.loop import run_turn
 from src.agent.registry import build_registry
-from src.db.hotel import InMemoryHotelRepository, RoomType
+from src.db.bookings import InMemoryBookingRepository
+from src.db.hotel import RoomType
+from src.tools.context import CallContext
 
 USER_TEXT = (
     "Hi, I'm Mario Rossi, mario.rossi@example.com, +39 333 123 4567. "
@@ -45,14 +47,19 @@ class ScriptedLLM:
 
 async def main() -> None:
     """Run one traced turn inside a call session, then flush."""
-    repo = InMemoryHotelRepository(
+    repo = InMemoryBookingRepository(
         room_types=[RoomType(name="Superior", max_guests=2, rooms=2)],
         rates=[],
         stays=[],
     )
     call_id = f"dryrun-{uuid.uuid4().hex[:8]}"
     with observability.call_session(call_id, "en"):
-        result = await run_turn(ScriptedLLM(), build_registry(repo), [], USER_TEXT)
+        result = await run_turn(
+            ScriptedLLM(),
+            build_registry(repo, repo, CallContext(call_id=call_id)),
+            [],
+            USER_TEXT,
+        )
     observability.flush()
     print(f"call_id: {call_id}")
     print(f"reply:   {result.reply}")

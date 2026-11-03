@@ -11,8 +11,10 @@ from src import observability
 from src.agent.llm import AssistantMessage, ChatMessage, ToolCall, ToolSpec
 from src.agent.loop import FALLBACK_REPLY, run_turn
 from src.agent.registry import Tool, build_registry
-from src.db.hotel import InMemoryHotelRepository, RoomType
+from src.db.bookings import InMemoryBookingRepository
+from src.db.hotel import RoomType
 from src.tools.check_availability import AvailabilityInput
+from src.tools.context import CallContext
 from tests.test_observability import FakeClient
 
 
@@ -36,12 +38,12 @@ class ScriptedLLM:
 
 def make_registry(today: date | None = None):
     """Registry over a one-room-type hotel."""
-    repo = InMemoryHotelRepository(
+    repo = InMemoryBookingRepository(
         room_types=[RoomType(name="Superior", max_guests=2, rooms=2)],
         rates=[],
         stays=[],
     )
-    return build_registry(repo, today=today)
+    return build_registry(repo, repo, CallContext(call_id="test"), today=today)
 
 
 @pytest.mark.asyncio
@@ -141,7 +143,7 @@ async def test_tool_rounds_are_capped_then_model_must_answer_without_tools() -> 
     )
 
     assert result.reply == "Let me send you an email."
-    assert llm.tools_offered == [2, 2, 2, 2, 2, 0]
+    assert llm.tools_offered == [7, 7, 7, 7, 7, 0]
 
 
 @pytest.mark.asyncio

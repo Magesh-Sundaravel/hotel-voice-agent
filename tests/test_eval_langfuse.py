@@ -11,9 +11,7 @@ from evals import run
 from evals.schema import Dataset
 from evals.sync import build_items
 from src import observability
-from src.agent.registry import build_registry
 from src.config import Settings
-from src.db.seed import seed_repository
 from tests.test_eval_run import DATASET, scripted_runs
 
 # --- build_items ---------------------------------------------------------
@@ -158,7 +156,7 @@ def test_sync_fails_loudly_when_tracing_is_off(monkeypatch: pytest.MonkeyPatch) 
 
 def test_fingerprint_changes_when_a_tool_changes() -> None:
     """Adding a tool or rewording its description must show up in a run."""
-    registry = build_registry(seed_repository())
+    registry = run.spec_registry(DATASET.today)
     before = run.tools_fingerprint(registry)
 
     assert run.tools_fingerprint(registry) == before
@@ -248,7 +246,10 @@ def test_the_run_is_named_and_described_so_runs_can_be_compared(
     assert metadata["git_sha"] == "abc1234"
     assert metadata["prompt_version"] == "7"
     assert metadata["model"] == "m"
-    assert metadata["tools"] == "check_availability,get_rates"
+    assert metadata["tools"] == (
+        "check_availability,get_rates,lookup_guest,create_booking,get_booking,"
+        "modify_booking,cancel_booking"
+    )
     assert metadata["repeats"] == "2"
     assert len(metadata["tools_hash"]) == 8
 

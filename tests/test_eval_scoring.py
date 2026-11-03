@@ -202,3 +202,19 @@ def test_italian_words_that_look_english_do_not_flip_the_verdict() -> None:
         score_turn(TurnExpect(), "it", [], "Ecco i prezzi della Suite e del Deluxe.")
         == []
     )
+
+
+def test_a_forbidden_tool_fails_and_others_are_allowed() -> None:
+    """Reading a booking is fine; cancelling before the caller says yes is not."""
+    expect = TurnExpect(
+        tool_calls=[ExpectedToolCall(name="get_booking")],
+        forbidden_tools=["cancel_booking"],
+    )
+
+    ok = score_turn(expect, "en", [call("get_booking")], GOOD_REPLY)
+    bad = score_turn(
+        expect, "en", [call("get_booking"), call("cancel_booking")], GOOD_REPLY
+    )
+
+    assert ok == []
+    assert bad == ["called cancel_booking, which this turn forbids"]

@@ -107,4 +107,4 @@ Hotel policies (invented, kept in settings and the system prompt, not in the dat
 - Free cancellation until 48 hours before check-in
 - No pets
 
-Seed also includes a handful of fake guests and reservations (including overlapping stays on the same room type) so availability and conflict cases can be tested and evaluated.
+Seed also includes three fake guests and three reservations with fixed references (482913, 615204, 730158), including both Suites over New Year, so availability, conflict, modify and cancel cases can be tested and evaluated. They are defined once in `src/db/seed.py`.

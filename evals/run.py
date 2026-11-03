@@ -5,7 +5,7 @@ import asyncio
 import hashlib
 import json
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 import httpx
@@ -21,6 +21,7 @@ from src.agent.prompt import PROMPT_NAME, build_system_prompt
 from src.agent.registry import Tool, build_registry
 from src.config import Settings
 from src.db.seed import seed_repository
+from src.tools.context import CallContext
 
 
 class CaseSummary(BaseModel):
@@ -64,13 +65,27 @@ def _rate(cases: list[CaseSummary]) -> float:
     return sum(c.passed_runs for c in cases) / total if total else 0.0
 
 
+def spec_registry(today: date) -> dict[str, Tool]:
+    """A registry used only for its tool specs (names, descriptions, schemas)."""
+    repo = seed_repository()
+    return build_registry(repo, repo, CallContext(call_id="specs"), today)
+
+
 async def _run_case_once(
-    case: EvalCase, llm: LLMClient, registry: dict[str, Tool], system_prompt: str
+    case: EvalCase, llm: LLMClient, today: date, system_prompt: str
 ) -> list[str]:
-    """Play one scripted conversation and return every failed check (none = pass)."""
+    """Play one scripted conversation and return every failed check (none = pass).
+
+    Each run gets a fresh seed hotel, so bookings made in one run cannot leak into
+    another, and its own call context with the case's caller ID.
+    """
     history = [ChatMessage(role="system", content=system_prompt)]
     failures: list[str] = []
     call_id = f"eval-{case.id}-{uuid.uuid4().hex[:6]}"
+    repo = seed_repository()
+    registry = build_registry(
+        repo, repo, CallContext(call_id=call_id, caller_phone=case.caller_phone), today
+    )
     with observability.call_session(call_id, case.language):
         for turn in case.turns:
             try:
@@ -90,7 +105,7 @@ async def _run_case_once(
 async def _run_case(
     case: EvalCase,
     llm: LLMClient,
-    registry: dict[str, Tool],
+    today: date,
     system_prompt: str,
     repeats: int,
 ) -> CaseSummary:
@@ -98,7 +113,7 @@ async def _run_case(
     passed_runs = 0
     failures: list[str] = []
     for _ in range(repeats):
-        run_failures = await _run_case_once(case, llm, registry, system_prompt)
+        run_failures = await _run_case_once(case, llm, today, system_prompt)
         passed_runs += not run_failures
         failures += run_failures
     return CaseSummary(
@@ -121,11 +136,10 @@ async def run_dataset(dataset: Dataset, llm: LLMClient, repeats: int) -> Report:
     Returns:
         A report with per-case outcomes and pass rates.
     """
-    registry = build_registry(seed_repository(), today=dataset.today)
     system_prompt = build_system_prompt(dataset.today)
     return Report(
         cases=[
-            await _run_case(case, llm, registry, system_prompt, repeats)
+            await _run_case(case, llm, dataset.today, system_prompt, repeats)
             for case in dataset.cases
         ]
     )
@@ -159,7 +173,7 @@ def run_on_langfuse(dataset: Dataset, settings: Settings, repeats: int) -> Repor
     sha = git_sha()
     prompt_version = sync_prompt(sha)
     sync_dataset(dataset)
-    registry = build_registry(seed_repository(), today=dataset.today)
+    registry = spec_registry(dataset.today)
     system_prompt = build_system_prompt(dataset.today)
     cases = {case.id: case for case in dataset.cases}
     summaries: dict[str, CaseSummary] = {}
@@ -169,7 +183,7 @@ def run_on_langfuse(dataset: Dataset, settings: Settings, repeats: int) -> Repor
         async with httpx.AsyncClient(timeout=30) as http:
             llm = GroqClient(settings.groq_api_key, settings.groq_model, http)
             summary = await _run_case(
-                cases[item.id], llm, registry, system_prompt, repeats
+                cases[item.id], llm, dataset.today, system_prompt, repeats
             )
         summaries[item.id] = summary
         return summary.model_dump()
