@@ -94,6 +94,38 @@
       ]
     },
     {
+      "id": "en-vague-date",
+      "language": "en",
+      "tags": [
+        "relative-date",
+        "vague-date"
+      ],
+      "turns": [
+        {
+          "caller": "Do you have a room for two people next week?",
+          "expect": {
+            "must_not_call_tools": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "it-vague-date",
+      "language": "it",
+      "tags": [
+        "relative-date",
+        "vague-date"
+      ],
+      "turns": [
+        {
+          "caller": "Avete una camera per due persone la settimana prossima?",
+          "expect": {
+            "must_not_call_tools": true
+          }
+        }
+      ]
+    },
+    {
       "id": "en-missing-info",
       "language": "en",
       "tags": [
