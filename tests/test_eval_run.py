@@ -1,5 +1,7 @@
 """Tests for the eval runner (seam E), using a scripted fake LLM."""
 
+import re
+
 import httpx
 import pytest
 
@@ -125,6 +127,19 @@ async def test_an_http_error_fails_that_run_and_the_rest_continue() -> None:
     assert english.passed_runs == 0
     assert "request failed" in english.failures[0]
     assert italian.passed_runs == 1
+
+
+@pytest.mark.asyncio
+async def test_each_finished_case_prints_a_progress_line(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Lines appear as cases finish, so a long run is not silent until the end."""
+    await run_dataset(DATASET, scripted_runs(), repeats=2)
+
+    lines = capsys.readouterr().out.splitlines()
+    assert len(lines) == 2
+    assert re.fullmatch(r"\[1/2\] PASS  en-case  \(2/2, \d+s\)", lines[0])
+    assert re.fullmatch(r"\[2/2\] FAIL  it-case  \(1/2, \d+s\)", lines[1])
 
 
 def test_an_empty_report_has_a_zero_rate_not_a_crash() -> None:
