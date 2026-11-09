@@ -157,7 +157,11 @@ async def test_bad_arguments_are_a_spoken_failure(client: httpx.AsyncClient) -> 
     )
 
     assert response.status_code == 200
-    assert response.json() == {"ok": False, "reason": "invalid_arguments"}
+    assert response.json() == {
+        "ok": False,
+        "reason": "invalid_arguments",
+        "fields": ["check_in", "check_out", "guests"],
+    }
 
 
 @pytest.mark.asyncio

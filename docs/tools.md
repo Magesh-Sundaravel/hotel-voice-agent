@@ -8,6 +8,13 @@ The model decides when and how to call a tool from its description and its param
 - `tests/test_tool_specs.py` enforces: every parameter described, at least four sentences per tool, every `reason` named in the description, the real stay limit quoted from `MAX_STAY_NIGHTS`, and each tool pointing at the other for what it does not do.
 - Changing a description changes `tools_hash` in the Langfuse run metadata, so run the evals before and after and compare the two experiments.
 
+## Failures any tool can return
+The loop (`src/agent/loop.py`, also behind the webhooks) returns these before or around the tool itself:
+- unknown_tool: no tool with that name
+- invalid_arguments: the arguments do not fit the schema; `fields: [str]` names the bad arguments (names only, never values; empty when the JSON itself is broken)
+- tool_timeout: the tool took longer than 1.5 s
+- tool_error: the tool raised an unexpected error
+
 ## TEMPLATE_tool_name
 - Purpose: one line
 - Input: field: type, ...
