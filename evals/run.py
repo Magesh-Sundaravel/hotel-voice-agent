@@ -310,7 +310,7 @@ def main() -> None:
     parser.add_argument(
         "--repeats",
         type=int,
-        default=5,
+        default=1,
         choices=range(1, 100),
         metavar="N",
         help="runs per case",
