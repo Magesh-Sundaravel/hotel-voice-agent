@@ -11,6 +11,7 @@ from src.db.bookings import (
     Booking,
     BookingChange,
     BookingConflict,
+    ConfirmationTarget,
     GuestSummary,
     NewBooking,
     new_reference,
@@ -130,6 +131,17 @@ async def _lowest_free_room(
 _BOOKING_SELECT = (
     "select res.reference, res.status, g.first_name, rt.name as room_type,"
     " res.check_in, res.check_out, res.adults, res.total_cents, res.cancelled_at"
+    " from reservations res"
+    " join guests g on g.id = res.guest_id"
+    " join rooms r on r.id = res.room_id"
+    " join room_types rt on rt.id = r.room_type_id"
+)
+
+# A booking plus what sending its confirmation needs.
+_TARGET_SELECT = (
+    "select res.reference, res.status, g.first_name, rt.name as room_type,"
+    " res.check_in, res.check_out, res.adults, res.total_cents, res.cancelled_at,"
+    " g.id as guest_id, g.email"
     " from reservations res"
     " join guests g on g.id = res.guest_id"
     " join rooms r on r.id = res.room_id"
@@ -279,7 +291,8 @@ class PostgresBookingRepository:
                 return BookingConflict(reason="no_availability")
             await conn.execute(
                 "update reservations set room_id = $2, check_in = $3, check_out = $4,"
-                " adults = $5, total_cents = $6 where reference = $1",
+                " adults = $5, total_cents = $6, confirmation_sent_at = null"
+                " where reference = $1",
                 reference,
                 room_id,
                 change.check_in,
@@ -309,6 +322,47 @@ class PostgresBookingRepository:
                 last_name,
             )
             return Booking(**dict(row)) if row else None
+
+    async def get_confirmation_target(
+        self, reference: str, last_name: str
+    ) -> ConfirmationTarget | None:
+        """Find a booking with its guest's id and email."""
+        row = await self._db.fetchrow(
+            _TARGET_SELECT
+            + " where res.reference = $1 and lower(g.last_name) = lower(trim($2))",
+            reference,
+            last_name,
+        )
+        if row is None:
+            return None
+        fields = dict(row)
+        guest_id, email = str(fields.pop("guest_id")), fields.pop("email")
+        return ConfirmationTarget(
+            booking=Booking(**fields), guest_id=guest_id, email=email
+        )
+
+    async def claim_confirmation(self, reference: str, now: datetime) -> bool:
+        """Mark the confirmation as sent; False if it already was.
+
+        One conditional update, so two concurrent calls cannot both claim it.
+        """
+        claimed = await self._db.fetchval(
+            "update reservations set confirmation_sent_at = $2"
+            " where reference = $1 and confirmation_sent_at is null"
+            " returning reference",
+            reference,
+            now,
+        )
+        return claimed is not None
+
+    async def release_confirmation(self, reference: str, claimed_at: datetime) -> None:
+        """Clear the mark set at `claimed_at`; a newer mark is kept."""
+        await self._db.execute(
+            "update reservations set confirmation_sent_at = null"
+            " where reference = $1 and confirmation_sent_at = $2",
+            reference,
+            claimed_at,
+        )
 
     @staticmethod
     async def _get(conn: asyncpg.Connection, reference: str) -> Booking:

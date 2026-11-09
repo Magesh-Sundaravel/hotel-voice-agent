@@ -73,15 +73,18 @@ async def run_turn(
                 messages.append(
                     ChatMessage(
                         role="tool",
-                        content=await _run_tool(registry, call),
+                        content=(await run_tool(registry, call)).model_dump_json(),
                         tool_call_id=call.id,
                     )
                 )
     raise AssertionError("unreachable: the last round always returns")
 
 
-async def _run_tool(registry: dict[str, Tool], call: ToolCall) -> str:
-    """Run one tool call inside a trace span and return its JSON result."""
+async def run_tool(registry: dict[str, Tool], call: ToolCall) -> BaseModel:
+    """Run one tool call inside a trace span and return its result. Never raises.
+
+    Shared by the agent loop and the ElevenLabs tool webhooks.
+    """
     with observability.tool_span(call.name, call.arguments) as span:
         result = await _execute_tool(registry, call)
         if isinstance(result, ToolFailure):
@@ -92,7 +95,7 @@ async def _run_tool(registry: dict[str, Tool], call: ToolCall) -> str:
             )
         else:
             span.update(output=result.model_dump_json())
-    return result.model_dump_json()
+    return result
 
 
 async def _execute_tool(registry: dict[str, Tool], call: ToolCall) -> BaseModel:

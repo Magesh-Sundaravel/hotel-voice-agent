@@ -42,3 +42,20 @@ Src: https://elevenlabs.io/docs/eleven-agents/phone-numbers/sip-trunking.md
 
 ## Contradictions with docs/architecture.md
 Not checked: architecture.md was not read (task said edit/touch nothing else). Compare manually, especially LLM auth and tool retry assumptions.
+
+## 5. Custom LLM proxy follow-up (checked 2026-11-09; supersedes the UNVERIFIED lines in section 1 where noted)
+Src: https://elevenlabs.io/docs/api-reference/agents/create.md (CustomLLM schema)
+Src: https://elevenlabs.io/docs/eleven-agents/customization/llm/custom-llm/groq-cloud.md
+Src: https://elevenlabs.io/docs/eleven-agents/integrate/environment-variables.md
+Src: https://elevenlabs.io/docs/eleven-agents/customization/personalization.md
+Src: https://elevenlabs.io/docs/eleven-agents/customization/tools/system-tools/language-detection.md
+Src: https://elevenlabs.io/docs/eleven-agents/customization/voice/customization/language.md
+- Path: still UNVERIFIED. Docs disagree: Groq guide enters base `https://api.groq.com/openai/v1` (implies append); env-vars example sets url `.../v1/chat/completions` (full path). Schema: url = "URL of the Chat Completions compatible endpoint". Serve both `/llm/v1` and `/llm/v1/chat/completions`, log the path hit.
+- Auth: VERIFIED fields `custom_llm.api_key` (workspace secret ref `{secret_id}` or env var), `custom_llm.request_headers` (literal | secret `{secret_id}` | dynamic var `{variable_name}` | env var), `auth_connection` ("only ... Authorization Bearer token are supported"). UNVERIFIED: api_key sent as `Authorization: Bearer` (implied, not stated). Safest: Secret-type request header, same as tools.
+- IDs in body: VERIFIED none documented (no conversation_id/caller/call id fields). user_id: only seen in example server code; UNVERIFIED that it is populated for phone calls.
+- IDs via headers: VERIFIED schema allows a dynamic-variable header on custom LLM. UNVERIFIED that `system__conversation_id` resolves there (docs only say system vars work for tool params/headers). Test.
+- elevenlabs_extra_body: set via `custom_llm_extra_body` in conversation_initiation_client_data. Inbound-call initiation webhook runs for SIP trunk, receives caller_id, called_number, call_sid, agent_id, conversation_id (+ call_id, sip_headers on SIP), may return custom_llm_extra_body: VERIFIED. That it arrives as `elevenlabs_extra_body` and needs a Security override toggle: UNVERIFIED. No `{{var}}` templating into extra body documented.
+- Languages: primary `conversation_config.agent.language` + `conversation_config.language_presets` per extra language (first message etc. overridable). `language_detection` system tool (params `language`, `reason`) switches mid-call; target languages must be in agent settings. VERIFIED.
+- Current language to LLM/tools: no `system__` language variable documented (UNVERIFIED/absent). Our proxy sees the language_detection call in `tools`/messages since our LLM emits it (inference). Alternative: Update state system tool sets a custom dynamic var, bindable to tool params (UNVERIFIED end to end).
+- Webhook body: VERIFIED `request_body_schema` "object which will be sent as the json body"; properties = top-level keys, application/json default. Property `dynamic_variable` binds a var (e.g. system__conversation_id) instead of LLM fill; `is_system_provided` also exists. VERIFIED schema; system__ binding per dynamic-variables page.
+- Contradicted architecture.md ("no custom headers are documented for custom LLMs" and the `/llm` open point): fixed there on 2026-11-09; the proxy now authenticates with a Secret-type request header.

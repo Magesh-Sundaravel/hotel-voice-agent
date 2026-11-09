@@ -1,10 +1,11 @@
 """Guest and reservation access: the BookingRepository protocol and its in-memory fake."""
 
 import secrets
+import uuid
 from datetime import date, datetime
 from typing import Literal, Protocol
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.db.hotel import InMemoryHotelRepository, Rate, RoomType, Stay
 
@@ -57,6 +58,14 @@ class GuestSummary(BaseModel):
     has_email: bool
 
 
+class ConfirmationTarget(BaseModel):
+    """What sending a confirmation needs. The email never reaches the model."""
+
+    booking: Booking
+    guest_id: str
+    email: str | None
+
+
 class BookingConflict(BaseModel):
     """Why a write could not be done, in a word the tool passes on."""
 
@@ -93,6 +102,23 @@ class BookingRepository(Protocol):
         """Cancel a booking at `now`; an already cancelled one is returned unchanged."""
         ...
 
+    async def get_confirmation_target(
+        self, reference: str, last_name: str
+    ) -> ConfirmationTarget | None:
+        """Find a booking with its guest's id and email, by reference and last name."""
+        ...
+
+    async def claim_confirmation(self, reference: str, now: datetime) -> bool:
+        """Mark the confirmation as sent at `now`; False if it already was."""
+        ...
+
+    async def release_confirmation(self, reference: str, claimed_at: datetime) -> None:
+        """Clear the mark set at `claimed_at` after a failed send, so a retry works.
+
+        A newer mark (the booking was modified and re-sent meanwhile) is kept.
+        """
+        ...
+
 
 def same_name(first_a: str, last_a: str, first_b: str, last_b: str) -> bool:
     """Whether two names are the same person's, ignoring case and outer spaces."""
@@ -110,6 +136,7 @@ def new_reference() -> str:
 class _Guest(BaseModel):
     """A guest record in memory."""
 
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     first_name: str
     last_name: str
     phone: str
@@ -123,6 +150,7 @@ class _Reservation(BaseModel):
     booking: Booking
     phone: str
     idempotency_key: str
+    confirmation_sent_at: datetime | None = None
 
 
 class InMemoryBookingRepository(InMemoryHotelRepository):
@@ -275,7 +303,34 @@ class InMemoryBookingRepository(InMemoryHotelRepository):
         if booked - overlaps_itself >= rooms:
             return BookingConflict(reason="no_availability")
         res.booking = old.model_copy(update=change.model_dump())
+        res.confirmation_sent_at = None
         return res.booking
+
+    async def get_confirmation_target(
+        self, reference: str, last_name: str
+    ) -> ConfirmationTarget | None:
+        """Find a booking with its guest's id and email."""
+        res = self._find(reference, last_name)
+        if res is None:
+            return None
+        guest = self._guests[res.phone]
+        return ConfirmationTarget(
+            booking=res.booking, guest_id=guest.id, email=guest.email
+        )
+
+    async def claim_confirmation(self, reference: str, now: datetime) -> bool:
+        """Mark the confirmation as sent; False if it already was."""
+        res = next(r for r in self._reservations if r.booking.reference == reference)
+        if res.confirmation_sent_at is not None:
+            return False
+        res.confirmation_sent_at = now
+        return True
+
+    async def release_confirmation(self, reference: str, claimed_at: datetime) -> None:
+        """Clear the mark set at `claimed_at`; a newer mark is kept."""
+        res = next(r for r in self._reservations if r.booking.reference == reference)
+        if res.confirmation_sent_at == claimed_at:
+            res.confirmation_sent_at = None
 
     def _find(self, reference: str, last_name: str) -> _Reservation | None:
         """The reservation with this reference and guest last name, any case."""

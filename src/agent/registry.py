@@ -1,7 +1,7 @@
 """Tool registry: the tools the agent can call, with their schemas."""
 
 from collections.abc import Awaitable, Callable
-from datetime import date, datetime, time
+from datetime import UTC, date, datetime, time
 from typing import cast
 
 from pydantic import BaseModel, ConfigDict
@@ -9,15 +9,20 @@ from pydantic import BaseModel, ConfigDict
 from src.agent.llm import ToolSpec
 from src.db.bookings import BookingRepository
 from src.db.hotel import HotelRepository
+from src.email.sender import EmailSender, FakeEmailSender
 from src.tools import MAX_STAY_NIGHTS
 from src.tools.cancel_booking import HOTEL_TZ, CancelBookingInput, cancel_booking
 from src.tools.check_availability import AvailabilityInput, check_availability
 from src.tools.context import CallContext
 from src.tools.create_booking import CreateBookingInput, create_booking
 from src.tools.get_booking import GetBookingInput, get_booking
+from src.tools.get_guest_info import GetGuestInfoInput, get_guest_info
 from src.tools.get_rates import GetRatesInput, get_rates
-from src.tools.lookup_guest import LookupGuestInput, lookup_guest
 from src.tools.modify_booking import ModifyBookingInput, modify_booking
+from src.tools.send_confirmation_email import (
+    SendConfirmationEmailInput,
+    send_confirmation_email,
+)
 
 # What the model reads when it decides whether and how to call a tool. Follows
 # Anthropic's guidance: what it does, when to use it, what it returns, what it does
@@ -58,7 +63,7 @@ _RATES_DESCRIPTION = (
     "no_rate_for_dates when some night of the stay has no price set."
 )
 
-_LOOKUP_GUEST_DESCRIPTION = (
+_GET_GUEST_INFO_DESCRIPTION = (
     "Finds out whether the caller is a returning guest, from the number they are "
     "calling from; it takes no arguments. "
     "Use it once the caller wants to book and you need their name, before asking "
@@ -78,7 +83,7 @@ _CREATE_BOOKING_DESCRIPTION = (
     "It returns the 6-digit reference, the dates, the total in euros and whether "
     "an email is on file; read the reference digit by digit. "
     "The price is worked out by the hotel, so never pass one; it books one room "
-    "only and does not send the confirmation email. "
+    "only and does not send the confirmation email (use send_confirmation_email). "
     "On failure it returns a reason instead: "
     f"invalid_dates when the departure is not after the arrival, the arrival is in "
     f"the past or the stay is longer than {MAX_STAY_NIGHTS} nights; "
@@ -114,7 +119,8 @@ _MODIFY_BOOKING_DESCRIPTION = (
     "booking, keeping the same reference; pass only what changes. "
     "Use it after get_booking has found the booking, get_rates has priced the new "
     "stay, and the caller has said yes to the new details and the new total. "
-    "It returns the updated booking with its new total in euros. "
+    "It returns the updated booking with its new total in euros; then call "
+    "send_confirmation_email so the guest gets the new details. "
     "It does not cancel a booking (use cancel_booking) or change the guest's name. "
     "On failure it returns a reason instead: "
     "not_found when no booking has that reference and last name; "
@@ -142,6 +148,21 @@ _CANCEL_BOOKING_DESCRIPTION = (
     "not_found when no booking has that reference and last name; "
     "past_booking when the stay has already ended."
 )
+_SEND_CONFIRMATION_DESCRIPTION = (
+    "Emails the guest a confirmation of their booking, with a calendar invite "
+    "attached, to the email address on file. "
+    "Call it right after create_booking or modify_booking succeeds, without asking "
+    "the caller again, then say the email will arrive in a few minutes. "
+    "It returns ok once the email is on its way; calling it again for the same "
+    "booking sends nothing more. "
+    "It does not take an email address: create_booking stores the email, and this "
+    "tool cannot change it or send a cancellation. "
+    "On failure it returns a reason instead: "
+    "not_found when no booking has that reference and last name; "
+    "cancelled when the booking is cancelled; "
+    "no_email_on_file when the guest gave no email, so say nothing more about "
+    "email."
+)
 
 
 class Tool(BaseModel):
@@ -168,6 +189,7 @@ def build_registry(
     bookings: BookingRepository,
     ctx: CallContext,
     today: date | None = None,
+    sender: EmailSender | None = None,
 ) -> dict[str, Tool]:
     """Build the tool registry bound to the hotel and to one call.
 
@@ -177,6 +199,7 @@ def build_registry(
         ctx: The call's id and caller ID, which the model never sees.
         today: Override for the current date, so evals are deterministic. When set,
             cancel_booking also treats "now" as 10:00 hotel time on that day.
+        sender: Sends confirmation emails; a fake that sends nothing by default.
     """
     now = datetime.combine(today, time(10, 0), HOTEL_TZ) if today else None
 
@@ -186,8 +209,8 @@ def build_registry(
     async def _rates(inp: BaseModel) -> BaseModel:
         return await get_rates(hotel, cast(GetRatesInput, inp), today)
 
-    async def _lookup(_: BaseModel) -> BaseModel:
-        return await lookup_guest(bookings, ctx)
+    async def _guest_info(_: BaseModel) -> BaseModel:
+        return await get_guest_info(bookings, ctx)
 
     async def _create(inp: BaseModel) -> BaseModel:
         return await create_booking(
@@ -205,6 +228,16 @@ def build_registry(
     async def _cancel(inp: BaseModel) -> BaseModel:
         return await cancel_booking(bookings, cast(CancelBookingInput, inp), now)
 
+    email_sender = sender or FakeEmailSender()
+
+    async def _confirm(inp: BaseModel) -> BaseModel:
+        return await send_confirmation_email(
+            bookings,
+            email_sender,
+            cast(SendConfirmationEmailInput, inp),
+            now or datetime.now(UTC),
+        )
+
     tools = [
         Tool(
             name="check_availability",
@@ -219,10 +252,10 @@ def build_registry(
             handler=_rates,
         ),
         Tool(
-            name="lookup_guest",
-            description=_LOOKUP_GUEST_DESCRIPTION,
-            input_model=LookupGuestInput,
-            handler=_lookup,
+            name="get_guest_info",
+            description=_GET_GUEST_INFO_DESCRIPTION,
+            input_model=GetGuestInfoInput,
+            handler=_guest_info,
         ),
         Tool(
             name="create_booking",
@@ -247,6 +280,12 @@ def build_registry(
             description=_CANCEL_BOOKING_DESCRIPTION,
             input_model=CancelBookingInput,
             handler=_cancel,
+        ),
+        Tool(
+            name="send_confirmation_email",
+            description=_SEND_CONFIRMATION_DESCRIPTION,
+            input_model=SendConfirmationEmailInput,
+            handler=_confirm,
         ),
     ]
     return {t.name: t for t in tools}

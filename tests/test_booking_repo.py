@@ -364,3 +364,70 @@ async def test_modifying_with_a_wrong_last_name_finds_nothing(repos: Repos) -> N
         )
         is None
     )
+
+
+SENT_AT = datetime(2026, 11, 9, 14, 30, tzinfo=UTC)
+
+
+@pytest.mark.asyncio
+async def test_a_confirmation_target_carries_the_stored_email(repos: Repos) -> None:
+    """The email is only for sending; the tool never shows it to the model."""
+    created = await repos.bookings.create_booking(
+        new_booking(email="ada@guest.example")
+    )
+
+    target = await repos.bookings.get_confirmation_target(created.reference, "testa")
+
+    assert target is not None
+    assert target.booking == created
+    assert target.email == "ada@guest.example"
+    assert target.guest_id
+    assert (
+        await repos.bookings.get_confirmation_target(created.reference, "Rossi") is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_guest_without_email_has_no_target_email(repos: Repos) -> None:
+    """No email on file is reported, not guessed."""
+    created = await repos.bookings.create_booking(new_booking())
+
+    target = await repos.bookings.get_confirmation_target(created.reference, "Testa")
+
+    assert target is not None and target.email is None
+
+
+@pytest.mark.asyncio
+async def test_a_confirmation_is_claimed_once_until_released(repos: Repos) -> None:
+    """The claim stops a second send; releasing it after a failure allows a retry."""
+    created = await repos.bookings.create_booking(new_booking())
+
+    assert await repos.bookings.claim_confirmation(created.reference, SENT_AT)
+    assert not await repos.bookings.claim_confirmation(created.reference, SENT_AT)
+    await repos.bookings.release_confirmation(created.reference, SENT_AT)
+    assert await repos.bookings.claim_confirmation(created.reference, SENT_AT)
+
+
+@pytest.mark.asyncio
+async def test_a_stale_release_keeps_a_newer_claim(repos: Repos) -> None:
+    """An old failed send must not clear the mark of a newer, successful one."""
+    created = await repos.bookings.create_booking(new_booking())
+    later = SENT_AT.replace(minute=45)
+    await repos.bookings.claim_confirmation(created.reference, SENT_AT)
+    await repos.bookings.modify_booking(created.reference, "Testa", change(adults=1))
+    await repos.bookings.claim_confirmation(created.reference, later)
+
+    await repos.bookings.release_confirmation(created.reference, SENT_AT)
+
+    assert not await repos.bookings.claim_confirmation(created.reference, later)
+
+
+@pytest.mark.asyncio
+async def test_modifying_a_booking_allows_a_new_confirmation(repos: Repos) -> None:
+    """Changed details need a new email, so modify clears the claim."""
+    created = await repos.bookings.create_booking(new_booking())
+    await repos.bookings.claim_confirmation(created.reference, SENT_AT)
+
+    await repos.bookings.modify_booking(created.reference, "Testa", change(adults=1))
+
+    assert await repos.bookings.claim_confirmation(created.reference, SENT_AT)

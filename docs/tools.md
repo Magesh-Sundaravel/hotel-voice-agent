@@ -51,7 +51,7 @@ Rules shared by the booking tools:
 - Prices are always computed by the server from `rates`; the model never sends a price.
 - Policy: free cancellation until 48 hours before check-in, which is 15:00 Europe/Rome on the arrival day.
 
-## lookup_guest
+## get_guest_info
 - Purpose: find out whether the caller is a returning guest, from their caller ID.
 - Use when: the caller wants to book and you need their name. Confirm it ("am I speaking with Giulia Rossi?") before using anything stored. If they say no, they are someone else on that phone: ask for their own mobile number and pass it to create_booking.
 - Does not: search by name, read a booking, or create a guest (guests are created by create_booking).
@@ -66,8 +66,8 @@ Rules shared by the booking tools:
 ## create_booking
 - Purpose: book one room for a stay.
 - Use when: check_availability has shown the room type is free, get_rates has priced it, you have the guest's first and last name, and the caller has said yes to the full read-back (dates, room type, adults, total price).
-- Does not: book more than one room, take payment, or send the confirmation email (that comes later).
-- Input: room_type: str (any case), check_in: date, check_out: date (exclusive), adults: int (at least 1), first_name: str, last_name: str, language: "it" | "en" (the language the caller is speaking), email: str | null (optional; spelled back once before booking), phone: str | null (E.164; only when the caller ID is withheld, or the caller is not the guest lookup_guest found)
+- Does not: book more than one room, take payment, or send the confirmation email (use send_confirmation_email).
+- Input: room_type: str (any case), check_in: date, check_out: date (exclusive), adults: int (at least 1), first_name: str, last_name: str, language: "it" | "en" (the language the caller is speaking), email: str | null (optional; spelled back once before booking), phone: str | null (E.164; only when the caller ID is withheld, or the caller is not the guest get_guest_info found)
 - The guest's phone is `phone` if given, otherwise the caller ID. A guest with that phone and the same name (any case) is reused, and a new email replaces the stored one. Name and phone are never overwritten.
 - The room is the lowest-numbered free room of the type for the whole stay.
 - Output: {ok: true, reference: str, room_type: str, check_in: date, check_out: date, nights: int, adults: int, total_eur: int, email_on_file: bool} | {ok: false, reason: str}
@@ -110,7 +110,7 @@ Rules shared by the booking tools:
   - past_booking: the stay has already ended
   - nothing_to_change: no field was given
   - invalid_dates, invalid_guests, unknown_room_type, too_many_guests, no_availability, no_rate_for_dates: same as create_booking
-- Side effects: updates the reservation
+- Side effects: updates the reservation and clears `confirmation_sent_at`, so send_confirmation_email sends the updated details
 - Idempotent: yes. Applying the same change again returns the same booking.
 - Typical latency: under 500 ms (one transaction)
 
@@ -125,3 +125,17 @@ Rules shared by the booking tools:
 - Side effects: sets the reservation to cancelled, which frees the room
 - Idempotent: yes (by reference). Cancelling an already cancelled booking returns ok with its original `late_cancellation`.
 - Typical latency: under 300 ms
+
+## send_confirmation_email
+- Purpose: email the guest a confirmation of a booking, with a calendar invite attached.
+- Use when: create_booking or modify_booking has just succeeded. Call it straight away, without asking the caller again; the email address was settled during booking. Then say the email will arrive in a few minutes.
+- Does not: take an email address (it only sends to the one on file, which create_booking stores), send a cancellation, or report whether the email was delivered.
+- Input: reference: str (6 digits), last_name: str (any case), language: "it" | "en" (the language the caller is speaking now, not the one stored on the guest)
+- Output: {ok: true} | {ok: false, reason: str}
+- Reasons: not_found (no booking with that reference and last name), cancelled (the booking is cancelled), no_email_on_file (the guest gave no email; say nothing more about email)
+- The email is sent by a background job after the tool returns. The job marks the booking, reads it again (so a modify made in between is what gets mailed), builds the email and sends it. Any failure in the job is logged with `guest_id` only, is not reported to the caller, and clears the mark.
+- Content: plain text in `language`, with the reference, room type, dates and total said the way a person would, adults, check-in and check-out times, and the cancellation policy. The guest's email address never reaches the model.
+- Attachment `booking.ics`: `METHOD:REQUEST`, the hotel's Gmail address as ORGANIZER, the guest as ATTENDEE with `RSVP=FALSE`, an all-day event from check_in to check_out (exclusive). UID `booking-<reference>@<sender domain>` stays the same for the life of the booking and SEQUENCE grows with each send (the send time in Unix seconds, valid until 2038, the iCalendar INTEGER limit), so a modify updates the event in the guest's calendar.
+- Side effects: the job sets `reservations.confirmation_sent_at`, then sends one email. If the job fails, it clears only its own mark (matched on the time it set), so a later call can retry and a newer send is never undone. The app waits up to 10 s for queued sends at shutdown.
+- Idempotent: yes (by reference). Once sent, calling again returns ok and sends nothing, until modify_booking changes the booking, which clears the mark.
+- Typical latency: under 300 ms (the send itself runs after the reply)

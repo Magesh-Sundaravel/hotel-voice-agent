@@ -41,7 +41,7 @@ class CreateBookingInput(BaseModel):
         description=(
             "The guest's mobile in international format, like +393471234567. Only "
             "when the caller's number is withheld, or the caller is not the guest "
-            "lookup_guest found. Otherwise leave out: the caller ID is used."
+            "get_guest_info found. Otherwise leave out: the caller ID is used."
         ),
     )
 

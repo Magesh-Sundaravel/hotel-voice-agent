@@ -32,7 +32,7 @@ Pydantic models in `evals/schema.py` are the schema; `tests/test_eval_schema.py`
 - The seed bookings have fixed references: 482913 (Giulia Rossi, Penthouse, 24 to 28 December 2026), 615204 (James Carter, Suite) and 730158 (Marco Bianchi, Suite), both 30 December to 3 January. Seed guest phones are +12025550101 to 0103.
 - `forbidden_tools` is how a case checks that the agent waits for the caller's yes: the turn that reads a booking back forbids the write, and the caller's yes turn expects it.
 - Callers are scripted. There is no simulated-caller LLM.
-- Tags in use: `relative-date`, `missing-info`, `limited-availability`, `season-boundary`, `too-many-guests`, `past-date`, `booking-read`, `booking-create`, `booking-modify`, `booking-cancel`, `returning-caller`, `confirm-before-write`.
+- Tags in use: `relative-date`, `missing-info`, `limited-availability`, `season-boundary`, `too-many-guests`, `past-date`, `booking-read`, `booking-create`, `booking-modify`, `booking-cancel`, `returning-caller`, `confirm-before-write`, `confirmation-email`.
 - Tags planned, no case yet (they need checks the scorer does not have): `language-switch`.
 
 ## Running

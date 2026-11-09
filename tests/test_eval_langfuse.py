@@ -250,8 +250,8 @@ def test_the_run_is_named_and_described_so_runs_can_be_compared(
     assert metadata["prompt_version"] == "7"
     assert metadata["model"] == "m"
     assert metadata["tools"] == (
-        "check_availability,get_rates,lookup_guest,create_booking,get_booking,"
-        "modify_booking,cancel_booking"
+        "check_availability,get_rates,get_guest_info,create_booking,get_booking,"
+        "modify_booking,cancel_booking,send_confirmation_email"
     )
     assert metadata["repeats"] == "2"
     assert len(metadata["tools_hash"]) == 8

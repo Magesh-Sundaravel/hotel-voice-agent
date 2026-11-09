@@ -33,7 +33,7 @@ Why these choices: [docs/decisions/](docs/decisions/).
 ## What works today
 
 - Agent loop with native tool calling and no graph framework (`src/agent/`)
-- Tools: `check_availability`, `get_rates`, `lookup_guest`, `create_booking`, `get_booking`, `modify_booking` and `cancel_booking`, backed by an in-memory seed repository in the CLI and evals, with a Postgres version tested against Supabase (`src/tools/`, `src/db/`)
+- Tools: `check_availability`, `get_rates`, `get_guest_info`, `create_booking`, `get_booking`, `modify_booking`, `cancel_booking` and `send_confirmation_email` (Gmail, with an `.ics` invite), backed by an in-memory seed repository in the CLI and evals, with a Postgres version tested against Supabase (`src/tools/`, `src/db/`)
 - Langfuse tracing of model calls and eval runs, with PII masking (`src/observability.py`)
 - Bilingual golden eval dataset (24 cases, Italian and English) with a runner and scorer (`evals/`)
 - `/health` endpoint, Dockerfile and Compose file
