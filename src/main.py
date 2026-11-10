@@ -1,5 +1,6 @@
 """FastAPI entrypoint."""
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -19,6 +20,10 @@ from src.voice import llm_proxy, webhooks
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Open the database pool and the HTTP client for the life of the app."""
     settings = Settings()
+    logging.basicConfig(
+        level=settings.log_level,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
     pool = await asyncpg.create_pool(settings.database_url)
     try:
         async with httpx.AsyncClient() as http:
