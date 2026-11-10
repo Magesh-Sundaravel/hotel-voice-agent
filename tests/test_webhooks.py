@@ -63,6 +63,21 @@ async def test_a_missing_or_wrong_secret_is_refused(
 
 
 @pytest.mark.asyncio
+async def test_a_refused_request_logs_a_warning_without_the_secret(
+    client: httpx.AsyncClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A misconfigured secret must be visible in the logs, not just as silent 401s."""
+    with caplog.at_level("WARNING", logger="src.voice.webhooks"):
+        await client.post(
+            "/tools/get_guest_info", json=_body(), headers={"X-Webhook-Secret": "wrong"}
+        )
+
+    assert "/tools/get_guest_info" in caplog.text
+    assert "wrong" not in caplog.text
+    assert SECRET not in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_the_secret_is_checked_before_the_body(client: httpx.AsyncClient) -> None:
     """No validation details for an unauthenticated caller: 401, not 422."""
     response = await client.post("/tools/get_guest_info", json={"junk": 1})

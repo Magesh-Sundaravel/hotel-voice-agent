@@ -25,3 +25,4 @@ class Settings(BaseSettings):
     langfuse_secret_key: str = ""
     langfuse_base_url: str = "https://cloud.langfuse.com"
     aws_region: str = ""
+    log_level: str = "INFO"

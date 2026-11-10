@@ -8,6 +8,7 @@ carry the shared secret in X-Webhook-Secret. See docs/architecture.md.
 
 import hmac
 import json
+import logging
 from dataclasses import dataclass
 from typing import Annotated
 
@@ -27,6 +28,8 @@ from src.tools.context import CallContext
 from src.tools.stay import E164
 
 WEBHOOK_TRACE_NAME = "handle-tool-webhook"
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -55,6 +58,7 @@ class ToolRequest(BaseModel):
 
 
 async def require_secret(
+    request: Request,
     services: Annotated[Services, Depends(get_services)],
     x_webhook_secret: Annotated[str, Header()] = "",
 ) -> None:
@@ -67,6 +71,8 @@ async def require_secret(
     if not expected or not hmac.compare_digest(
         x_webhook_secret.encode(), expected.encode()
     ):
+        reason = "WEBHOOK_SECRET is unset" if not expected else "secret mismatch"
+        logger.warning("refused %s: %s", request.url.path, reason)
         raise HTTPException(status_code=401, detail="unauthorized")
 
 
