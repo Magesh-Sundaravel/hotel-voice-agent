@@ -96,15 +96,23 @@ async def test_tool_call_result_is_fed_back_to_the_model() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("name", "arguments", "reason"),
+    ("name", "arguments", "expected"),
     [
-        ("book_the_moon", "{}", "unknown_tool"),
-        ("check_availability", "not json", "invalid_arguments"),
-        ("check_availability", '{"guests": "many"}', "invalid_arguments"),
+        ("book_the_moon", "{}", {"reason": "unknown_tool"}),
+        (
+            "check_availability",
+            "not json",
+            {"reason": "invalid_arguments", "fields": []},
+        ),
+        (
+            "check_availability",
+            '{"check_in": "next week", "check_out": "2026-12-12", "guests": "many"}',
+            {"reason": "invalid_arguments", "fields": ["check_in", "guests"]},
+        ),
     ],
 )
 async def test_bad_tool_call_becomes_error_result_not_a_crash(
-    name: str, arguments: str, reason: str
+    name: str, arguments: str, expected: dict[str, object]
 ) -> None:
     """The model gets {ok: false, reason} and can recover in the same turn."""
     call = ToolCall(id="c1", name=name, arguments=arguments)
@@ -122,7 +130,7 @@ async def test_bad_tool_call_becomes_error_result_not_a_crash(
     assert result.reply == "Sorry, let me try again."
     tool_msg = llm.seen[1][-1]
     assert tool_msg.tool_call_id == "c1"
-    assert json.loads(tool_msg.content or "") == {"ok": False, "reason": reason}
+    assert json.loads(tool_msg.content or "") == {"ok": False, **expected}
 
 
 @pytest.mark.asyncio
@@ -143,7 +151,7 @@ async def test_tool_rounds_are_capped_then_model_must_answer_without_tools() -> 
     )
 
     assert result.reply == "Let me send you an email."
-    assert llm.tools_offered == [7, 7, 7, 7, 7, 0]
+    assert llm.tools_offered == [8, 8, 8, 8, 8, 0]
 
 
 @pytest.mark.asyncio

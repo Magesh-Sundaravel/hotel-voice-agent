@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import hashlib
 import json
+import time
 import uuid
 from datetime import UTC, date, datetime
 from typing import Any
@@ -125,6 +126,18 @@ async def _run_case(
     )
 
 
+def _print_progress(
+    done: int, total: int, summary: CaseSummary, seconds: float
+) -> None:
+    """Print one line when a case finishes, e.g. `[3/29] PASS  en-x  (1/1, 42s)`."""
+    status = "PASS" if summary.passed_runs == summary.runs else "FAIL"
+    print(
+        f"[{done}/{total}] {status}  {summary.case_id}"
+        f"  ({summary.passed_runs}/{summary.runs}, {seconds:.0f}s)",
+        flush=True,
+    )
+
+
 def select_cases(dataset: Dataset, case_ids: list[str], tags: list[str]) -> Dataset:
     """Keep the cases whose id is in `case_ids` or that carry any of `tags`.
 
@@ -168,12 +181,15 @@ async def run_dataset(dataset: Dataset, llm: LLMClient, repeats: int) -> Report:
         A report with per-case outcomes and pass rates.
     """
     system_prompt = build_system_prompt(dataset.today)
-    return Report(
-        cases=[
-            await _run_case(case, llm, dataset.today, system_prompt, repeats)
-            for case in dataset.cases
-        ]
-    )
+    summaries: list[CaseSummary] = []
+    for case in dataset.cases:
+        start = time.monotonic()
+        summary = await _run_case(case, llm, dataset.today, system_prompt, repeats)
+        summaries.append(summary)
+        _print_progress(
+            len(summaries), len(dataset.cases), summary, time.monotonic() - start
+        )
+    return Report(cases=summaries)
 
 
 def tools_fingerprint(registry: dict[str, Tool]) -> str:
@@ -226,6 +242,7 @@ def run_on_langfuse(
     summaries: dict[str, CaseSummary] = {}
 
     async def task(*, item: Any, **_: Any) -> dict[str, Any]:
+        start = time.monotonic()
         # Built here, not outside: the SDK runs this task on its own event loop.
         async with httpx.AsyncClient(timeout=30) as http:
             llm = GroqClient(settings.groq_api_key, settings.groq_model, http)
@@ -233,6 +250,8 @@ def run_on_langfuse(
                 cases[item.id], llm, dataset.today, system_prompt, repeats
             )
         summaries[item.id] = summary
+        # Cases run one at a time (max_concurrency=1), so the count is in order.
+        _print_progress(len(summaries), len(cases), summary, time.monotonic() - start)
         return summary.model_dump()
 
     def evaluator(*, output: dict[str, Any], **_: Any) -> dict[str, Any]:
@@ -310,7 +329,7 @@ def main() -> None:
     parser.add_argument(
         "--repeats",
         type=int,
-        default=5,
+        default=1,
         choices=range(1, 100),
         metavar="N",
         help="runs per case",

@@ -180,8 +180,13 @@ def _close(manager: Any, exc_info: tuple[Any, Any, Any]) -> None:
 
 
 @contextmanager
-def turn_span(user_text: str) -> Iterator[Observation]:
-    """One caller turn = one trace. The call is the Langfuse session."""
+def turn_span(user_text: str, name: str = TURN_NAME) -> Iterator[Observation]:
+    """One caller turn = one trace. The call is the Langfuse session.
+
+    Args:
+        user_text: The trace input.
+        name: Trace name; the tool webhooks pass their own, one trace per request.
+    """
     call = _call.get()
     if call is None:
         with _observe() as obs:
@@ -190,7 +195,7 @@ def turn_span(user_text: str) -> Iterator[Observation]:
     try:
         scope = propagate_attributes(
             session_id=call.call_id,
-            trace_name=TURN_NAME,
+            trace_name=name,
             tags=[f"lang:{call.language}"],
         )
         scope.__enter__()
@@ -198,7 +203,7 @@ def turn_span(user_text: str) -> Iterator[Observation]:
         logger.warning("Langfuse attributes failed: %s", type(error).__name__)
         scope = None
     try:
-        with _observe(as_type="span", name=TURN_NAME, input=user_text) as obs:
+        with _observe(as_type="span", name=name, input=user_text) as obs:
             yield obs
     finally:
         if scope is not None:

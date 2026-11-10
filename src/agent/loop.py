@@ -25,6 +25,16 @@ class ToolFailure(BaseModel):
     reason: str
 
 
+class InvalidArguments(ToolFailure):
+    """The arguments did not fit the tool's schema; `fields` names the bad ones.
+
+    Names only, never values: values may carry guest data.
+    """
+
+    reason: str = "invalid_arguments"
+    fields: list[str]
+
+
 class TurnResult(BaseModel):
     """Outcome of one turn: the spoken reply and the updated history."""
 
@@ -73,15 +83,18 @@ async def run_turn(
                 messages.append(
                     ChatMessage(
                         role="tool",
-                        content=await _run_tool(registry, call),
+                        content=(await run_tool(registry, call)).model_dump_json(),
                         tool_call_id=call.id,
                     )
                 )
     raise AssertionError("unreachable: the last round always returns")
 
 
-async def _run_tool(registry: dict[str, Tool], call: ToolCall) -> str:
-    """Run one tool call inside a trace span and return its JSON result."""
+async def run_tool(registry: dict[str, Tool], call: ToolCall) -> BaseModel:
+    """Run one tool call inside a trace span and return its result. Never raises.
+
+    Shared by the agent loop and the ElevenLabs tool webhooks.
+    """
     with observability.tool_span(call.name, call.arguments) as span:
         result = await _execute_tool(registry, call)
         if isinstance(result, ToolFailure):
@@ -92,7 +105,7 @@ async def _run_tool(registry: dict[str, Tool], call: ToolCall) -> str:
             )
         else:
             span.update(output=result.model_dump_json())
-    return result.model_dump_json()
+    return result
 
 
 async def _execute_tool(registry: dict[str, Tool], call: ToolCall) -> BaseModel:
@@ -102,8 +115,10 @@ async def _execute_tool(registry: dict[str, Tool], call: ToolCall) -> BaseModel:
         return ToolFailure(reason="unknown_tool")
     try:
         args = tool.input_model.model_validate_json(call.arguments)
-    except ValidationError:
-        return ToolFailure(reason="invalid_arguments")
+    except ValidationError as error:
+        # Invalid JSON has no field location, so it gives an empty list.
+        fields = [str(e["loc"][0]) for e in error.errors() if e["loc"]]
+        return InvalidArguments(fields=list(dict.fromkeys(fields)))
     try:
         return await asyncio.wait_for(tool.handler(args), TOOL_TIMEOUT_S)
     except TimeoutError:

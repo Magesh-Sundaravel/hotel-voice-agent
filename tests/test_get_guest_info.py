@@ -1,4 +1,4 @@
-"""Tests for the lookup_guest tool."""
+"""Tests for the get_guest_info tool."""
 
 from datetime import date
 
@@ -7,7 +7,7 @@ import pytest
 from src.db.bookings import InMemoryBookingRepository, NewBooking
 from src.db.hotel import RoomType
 from src.tools.context import CallContext
-from src.tools.lookup_guest import LookupGuestOk, lookup_guest
+from src.tools.get_guest_info import GetGuestInfoOk, get_guest_info
 
 PHONE = "+12025550199"
 
@@ -42,9 +42,9 @@ async def test_a_returning_caller_is_found_by_caller_id() -> None:
     """The name comes back, and only whether an email is on file."""
     repo = await hotel_with_guest(email="ada@example.com")
 
-    result = await lookup_guest(repo, CallContext(call_id="c", caller_phone=PHONE))
+    result = await get_guest_info(repo, CallContext(call_id="c", caller_phone=PHONE))
 
-    assert result == LookupGuestOk(
+    assert result == GetGuestInfoOk(
         found=True, first_name="Ada", last_name="Testa", has_email=True
     )
     assert "ada@example.com" not in result.model_dump_json()
@@ -55,11 +55,11 @@ async def test_an_unknown_caller_is_not_found() -> None:
     """No guest with that phone."""
     repo = await hotel_with_guest(email=None)
 
-    result = await lookup_guest(
+    result = await get_guest_info(
         repo, CallContext(call_id="c", caller_phone="+12025550100")
     )
 
-    assert result == LookupGuestOk(found=False)
+    assert result == GetGuestInfoOk(found=False)
 
 
 @pytest.mark.asyncio
@@ -67,6 +67,6 @@ async def test_a_withheld_number_is_not_found() -> None:
     """No caller ID means no lookup at all."""
     repo = await hotel_with_guest(email=None)
 
-    result = await lookup_guest(repo, CallContext(call_id="c", caller_phone=None))
+    result = await get_guest_info(repo, CallContext(call_id="c", caller_phone=None))
 
-    assert result == LookupGuestOk(found=False)
+    assert result == GetGuestInfoOk(found=False)

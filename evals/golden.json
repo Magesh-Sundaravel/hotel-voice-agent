@@ -94,6 +94,38 @@
       ]
     },
     {
+      "id": "en-vague-date",
+      "language": "en",
+      "tags": [
+        "relative-date",
+        "vague-date"
+      ],
+      "turns": [
+        {
+          "caller": "Do you have a room for two people next week?",
+          "expect": {
+            "must_not_call_tools": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "it-vague-date",
+      "language": "it",
+      "tags": [
+        "relative-date",
+        "vague-date"
+      ],
+      "turns": [
+        {
+          "caller": "Avete una camera per due persone la settimana prossima?",
+          "expect": {
+            "must_not_call_tools": true
+          }
+        }
+      ]
+    },
+    {
       "id": "en-missing-info",
       "language": "en",
       "tags": [
@@ -516,7 +548,7 @@
           "expect": {
             "tool_calls": [
               {
-                "name": "lookup_guest",
+                "name": "get_guest_info",
                 "args": {}
               }
             ],
@@ -540,7 +572,7 @@
           "expect": {
             "tool_calls": [
               {
-                "name": "lookup_guest",
+                "name": "get_guest_info",
                 "args": {}
               }
             ],
@@ -634,6 +666,264 @@
                   "check_out": "2027-01-17",
                   "adults": 2,
                   "last_name": "Rossi"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "en-confirmation-new-guest",
+      "language": "en",
+      "tags": [
+        "booking-create",
+        "confirmation-email",
+        "confirm-before-write"
+      ],
+      "turns": [
+        {
+          "caller": "Hi, this is Tom Reed. I'd like to book a Superior for two from February 3rd to 5th, 2027. My mobile is +447700900456 and my email is tom.reed@example.com.",
+          "expect": {
+            "tool_calls": [
+              {
+                "name": "check_availability",
+                "args": {
+                  "check_in": "2027-02-03",
+                  "check_out": "2027-02-05"
+                }
+              }
+            ],
+            "forbidden_tools": [
+              "create_booking",
+              "send_confirmation_email"
+            ]
+          }
+        },
+        {
+          "caller": "Yes, that's all correct, please book it.",
+          "expect": {
+            "tool_calls": [
+              {
+                "name": "create_booking",
+                "args": {
+                  "room_type": "Superior",
+                  "check_in": "2027-02-03",
+                  "check_out": "2027-02-05",
+                  "last_name": "Reed",
+                  "email": "tom.reed@example.com"
+                }
+              },
+              {
+                "name": "send_confirmation_email",
+                "args": {
+                  "last_name": "Reed",
+                  "language": "en"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "it-confirmation-new-guest",
+      "language": "it",
+      "tags": [
+        "booking-create",
+        "confirmation-email",
+        "confirm-before-write"
+      ],
+      "turns": [
+        {
+          "caller": "Buongiorno, sono Luca Neri. Vorrei prenotare una Superior per due persone dal 3 al 5 febbraio 2027. Il mio cellulare è +393471234567 e la mia email è luca.neri@example.com.",
+          "expect": {
+            "tool_calls": [
+              {
+                "name": "check_availability",
+                "args": {
+                  "check_in": "2027-02-03",
+                  "check_out": "2027-02-05"
+                }
+              }
+            ],
+            "forbidden_tools": [
+              "create_booking",
+              "send_confirmation_email"
+            ]
+          }
+        },
+        {
+          "caller": "Sì, è tutto giusto, confermo la prenotazione.",
+          "expect": {
+            "tool_calls": [
+              {
+                "name": "create_booking",
+                "args": {
+                  "room_type": "Superior",
+                  "check_in": "2027-02-03",
+                  "check_out": "2027-02-05",
+                  "last_name": "Neri",
+                  "email": "luca.neri@example.com"
+                }
+              },
+              {
+                "name": "send_confirmation_email",
+                "args": {
+                  "last_name": "Neri",
+                  "language": "it"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "en-confirmation-language-of-call",
+      "language": "en",
+      "tags": [
+        "booking-create",
+        "returning-caller",
+        "confirmation-email",
+        "confirm-before-write"
+      ],
+      "caller_phone": "+12025550101",
+      "turns": [
+        {
+          "caller": "Hello, this is Giulia Rossi. I'd like to book a Superior for two from February 3rd to 5th, 2027. Please send the confirmation to the email you already have.",
+          "expect": {
+            "tool_calls": [
+              {
+                "name": "check_availability",
+                "args": {
+                  "check_in": "2027-02-03",
+                  "check_out": "2027-02-05"
+                }
+              }
+            ],
+            "forbidden_tools": [
+              "create_booking",
+              "send_confirmation_email"
+            ]
+          }
+        },
+        {
+          "caller": "Yes, that's all correct, please book it.",
+          "expect": {
+            "tool_calls": [
+              {
+                "name": "create_booking",
+                "args": {
+                  "room_type": "Superior",
+                  "check_in": "2027-02-03",
+                  "check_out": "2027-02-05",
+                  "last_name": "Rossi"
+                }
+              },
+              {
+                "name": "send_confirmation_email",
+                "args": {
+                  "last_name": "Rossi",
+                  "language": "en"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "en-modify-sends-confirmation",
+      "language": "en",
+      "tags": [
+        "booking-modify",
+        "confirmation-email",
+        "confirm-before-write"
+      ],
+      "turns": [
+        {
+          "caller": "Hi, I'd like to change booking 615204, surname Carter. Can we leave on January 4th instead of the 3rd?",
+          "expect": {
+            "tool_calls": [
+              {
+                "name": "get_booking",
+                "args": {
+                  "reference": "615204"
+                }
+              }
+            ],
+            "forbidden_tools": [
+              "modify_booking",
+              "send_confirmation_email"
+            ]
+          }
+        },
+        {
+          "caller": "Yes, that's fine, please change it.",
+          "expect": {
+            "tool_calls": [
+              {
+                "name": "modify_booking",
+                "args": {
+                  "reference": "615204",
+                  "check_out": "2027-01-04"
+                }
+              },
+              {
+                "name": "send_confirmation_email",
+                "args": {
+                  "reference": "615204",
+                  "language": "en"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "it-modify-sends-confirmation",
+      "language": "it",
+      "tags": [
+        "booking-modify",
+        "confirmation-email",
+        "confirm-before-write"
+      ],
+      "turns": [
+        {
+          "caller": "Buongiorno, vorrei modificare la prenotazione 482913, cognome Rossi. Possiamo partire il 29 dicembre invece del 28?",
+          "expect": {
+            "tool_calls": [
+              {
+                "name": "get_booking",
+                "args": {
+                  "reference": "482913"
+                }
+              }
+            ],
+            "forbidden_tools": [
+              "modify_booking",
+              "send_confirmation_email"
+            ]
+          }
+        },
+        {
+          "caller": "Sì, va bene, la modifichi pure.",
+          "expect": {
+            "tool_calls": [
+              {
+                "name": "modify_booking",
+                "args": {
+                  "reference": "482913",
+                  "check_out": "2026-12-29"
+                }
+              },
+              {
+                "name": "send_confirmation_email",
+                "args": {
+                  "reference": "482913",
+                  "language": "it"
                 }
               }
             ]

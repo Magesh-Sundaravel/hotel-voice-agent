@@ -32,7 +32,7 @@ Pydantic models in `evals/schema.py` are the schema; `tests/test_eval_schema.py`
 - The seed bookings have fixed references: 482913 (Giulia Rossi, Penthouse, 24 to 28 December 2026), 615204 (James Carter, Suite) and 730158 (Marco Bianchi, Suite), both 30 December to 3 January. Seed guest phones are +12025550101 to 0103.
 - `forbidden_tools` is how a case checks that the agent waits for the caller's yes: the turn that reads a booking back forbids the write, and the caller's yes turn expects it.
 - Callers are scripted. There is no simulated-caller LLM.
-- Tags in use: `relative-date`, `missing-info`, `limited-availability`, `season-boundary`, `too-many-guests`, `past-date`, `booking-read`, `booking-create`, `booking-modify`, `booking-cancel`, `returning-caller`, `confirm-before-write`.
+- Tags in use: `relative-date`, `missing-info`, `limited-availability`, `season-boundary`, `too-many-guests`, `past-date`, `booking-read`, `booking-create`, `booking-modify`, `booking-cancel`, `returning-caller`, `confirm-before-write`, `confirmation-email`.
 - Tags planned, no case yet (they need checks the scorer does not have): `language-switch`.
 
 ## Running
@@ -56,6 +56,8 @@ Per turn:
 - `must_not_call_tools`: the agent must answer in words without calling any tool (e.g. it asks for the missing date).
 - Reply rules, always on: the reply is not empty, has no markdown, no digits or ISO dates, at most 2 sentences, and its language equals `language`. The language check is a stopword heuristic for it/en.
 A case passes only if every check on every turn passes.
+While running, each finished case prints one progress line, e.g. `[3/29] PASS  en-relative-date  (1/1, 42s)` (PASS only when every repeat passed). The full report follows at the end.
+
 Run score = pass rate over all runs (cases x repeats), reported overall and split Italian vs English. A case that passes in some repeats and fails in others is listed as flaky.
 Each case runs `--repeats` times (default 5), sequentially. The Groq client waits and retries on HTTP 429 (limits are about 30 requests/min and 8K tokens/min, UNVERIFIED for the free tier). A request that still fails counts as a failed run with the reason `request failed: <error type>`; it does not stop the eval. A full default run is about 50 case runs, so use `--repeats 1` or 2 while iterating.
 Regression (a case that passed in the previous run of the same dataset and fails now) is NOT checked in code. The runner prints rates and flaky cases and always exits 0. Compare two experiments in the Langfuse UI.

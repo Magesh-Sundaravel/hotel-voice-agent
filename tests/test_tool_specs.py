@@ -12,7 +12,7 @@ from src.tools.context import CallContext
 REASONS = {
     "check_availability": {"invalid_dates", "invalid_guests", "too_many_guests"},
     "get_rates": {"unknown_room_type", "invalid_dates", "no_rate_for_dates"},
-    "lookup_guest": set(),
+    "get_guest_info": set(),
     "create_booking": {
         "invalid_dates",
         "invalid_guests",
@@ -39,6 +39,7 @@ REASONS = {
         "no_rate_for_dates",
     },
     "cancel_booking": {"not_found", "past_booking"},
+    "send_confirmation_email": {"not_found", "cancelled", "no_email_on_file"},
 }
 
 

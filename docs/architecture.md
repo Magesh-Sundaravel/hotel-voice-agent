@@ -17,23 +17,34 @@ Supabase is the hosted free tier. AWS is a future option (ECS Fargate would be t
 ## Components
 | Component | Owns | Code |
 |---|---|---|
-| ElevenLabs agent | voice, turn-taking, prompt, tool definitions | src/agent/, src/voice/ |
-| FastAPI backend (local, via ngrok) | tool endpoints, `/llm` proxy | src/tools/, src/voice/ |
+| ElevenLabs agent | voice, turn-taking, tool definitions (exported from the registry) | dashboard config, `src/voice/export_tools.py` |
+| FastAPI backend (local, via ngrok) | tool webhooks, `/llm` proxy, system prompt | src/tools/, src/voice/, src/agent/ |
 | Supabase (hosted) | guests, rooms, room types, rates, reservations, call log (see data-model.md) | src/db/ |
-| Gmail | send confirmations (with .ics invite) and follow-ups; read on demand | src/tools/ |
+| Gmail | send confirmations (with .ics invite) and follow-ups; read on demand | src/email/, src/tools/send_confirmation_email.py |
 | Langfuse Cloud | traces, eval runs, scores | evals/ |
 
 Room availability lives only in Supabase. There is no calendar integration; guests get a calendar invite as an `.ics` attachment on the confirmation email.
 
 ## LLM path
-ElevenLabs is configured with a custom LLM that points at FastAPI `/llm` (OpenAI-compatible). The proxy forwards to Groq and records the call in Langfuse.
+ElevenLabs is configured with a custom LLM that points at FastAPI `/llm/v1/chat/completions` (OpenAI-compatible, `src/voice/llm_proxy.py`). The proxy forwards to Groq and records the call in Langfuse.
 This is the only way Langfuse can trace LLM calls. The extra hop is small next to Groq's latency.
-Request shape (verified in docs/external/elevenlabs.md): OpenAI `chat/completions`-style, streamed as SSE ending in `data: [DONE]`. Strip `elevenlabs_extra_body` before forwarding to Groq.
-Unverified, to test when wiring it up: whether ElevenLabs appends `/chat/completions` to the configured URL, and how a secret reaches `/llm` (no custom headers are documented for custom LLMs). If no header can be sent, authenticate `/llm` with an unguessable path or the workspace secret mechanism instead.
+Request shape (verified in docs/external/elevenlabs.md): OpenAI `chat/completions`-style, streamed as SSE ending in `data: [DONE]`.
+What the proxy does to each request:
+- Puts our system prompt (`build_system_prompt`, today's date in Rome) before ElevenLabs' own system text, so callers get exactly the prompt the evals test. The ElevenLabs dashboard prompt is only a placeholder.
+- Forces `GROQ_MODEL`, whatever model name ElevenLabs sends, and drops `elevenlabs_extra_body`.
+- Streams Groq's bytes back unchanged; a Groq failure before the stream starts is a 502.
+- Records one Langfuse generation when the stream ends, in the session named by the `X-Call-Id` header.
+Auth: `custom_llm.request_headers` carries the shared secret as a Secret-type header (verified in docs/external/elevenlabs.md, section 5).
+Both `/llm/v1/chat/completions` and `/llm/v1/chat/completions/chat/completions` are served, and the path hit is logged, until we know whether ElevenLabs appends `/chat/completions` to the configured URL.
 
-## Tool authentication
-Tool webhooks: ElevenLabs sends a shared secret as a Secret-type `request_headers` entry. FastAPI compares it in constant time (`hmac.compare_digest`). The secret is in `.env` locally.
-`/llm`: see the open point above.
+## Tool webhooks
+One route, `POST /tools/{name}` (`src/voice/webhooks.py`), runs any registry tool through the same code as the CLI and evals (`run_tool`: argument validation, the 1.5 s budget, never raising).
+The JSON body is the tool's arguments plus `call_id` (bound to `system__conversation_id`) and `caller_phone` (bound to `system__caller_id`), so the model never generates them. A caller ID that is not E.164 (empty, or a word for a withheld number) counts as withheld.
+Tool failures are `{ok: false, reason}` with HTTP 200 so the agent can say them. Only a bad secret (401) or an unknown tool (404) is an HTTP error.
+`src/voice/export_tools.py` prints the ElevenLabs tool configs from the registry, so the dashboard never drifts from the code.
+
+## Authentication
+One shared secret, `WEBHOOK_SECRET`, sent by ElevenLabs as a Secret-type `X-Webhook-Secret` header on tool webhooks and on `/llm`. FastAPI compares it in constant time (`hmac.compare_digest`); an unset secret refuses every request. The secret is in `.env` locally.
 Upgrade path: signed requests (HMAC over body + timestamp).
 
 ## Tool latency and retries
@@ -51,13 +62,21 @@ Tools return `{ok: false, reason}`. The agent never promises a callback. After o
 - `call_log` records `needs_followup` and `followup_reason`. No PII in the log.
 
 ## Gmail
-- Send: booking confirmation (with `.ics`), modification and cancellation (same `.ics` UID, updated or cancelled), and failure follow-ups.
-- Read: only on demand, via `check_guest_email`. When a caller says they replied to our email, the tool searches the hotel inbox for recent messages from that guest's address and the agent summarises them in a sentence or two.
+- Send (built): `send_confirmation_email` after create_booking and after modify_booking, to the email on file, in the language of the call. The tool answers at once and the email goes out in the background; the agent says it will arrive in a few minutes. `reservations.confirmation_sent_at` stops a second send; modify clears it.
+- The `.ics` is an iTIP `METHOD:REQUEST` (hotel as ORGANIZER, guest as ATTENDEE with `RSVP=FALSE`) with a stable UID per booking and a growing SEQUENCE, so a modified booking updates the same calendar event. Gmail may still show RSVP buttons (to check on the first real email). See docs/external/gmail.md.
+- Send (planned): cancellation (`METHOD:CANCEL`, same UID) and failure follow-ups.
+- Read (planned): only on demand, via `check_guest_email`. When a caller says they replied to our email, the tool searches the hotel inbox for recent messages from that guest's address and the agent summarises them in a sentence or two.
 - No polling, no auto-replies, no email content in logs or traces.
 
 ## Google auth
-OAuth client (ID + secret) + a refresh token obtained once via manual consent. Scope: Gmail only (send + read).
+OAuth client (ID + secret) + a refresh token obtained once via manual consent, for the account in `GMAIL_SENDER`. Scope: `gmail.send` only for now. Reading later needs `gmail.readonly` (a Restricted scope) and a new consent.
 Backend uses the refresh token to get access tokens; no human in the loop at runtime.
+The OAuth app must be published "In production" (unverified is fine for one account): in "Testing", refresh tokens with Gmail scopes expire after 7 days. Changing the account's password also revokes the token.
 
 ## Open questions
-None. (Eval format and scoring are tracked in docs/evals.md.)
+To settle on the first real call (see docs/setup-elevenlabs-telnyx.md):
+- Which `/llm` path ElevenLabs calls (the proxy logs it).
+- Whether a dynamic-variable header resolves `system__conversation_id` on the custom LLM (`X-Call-Id`); if not, LLM traces land in session "unknown".
+- What ElevenLabs puts in its own system message, now placed after ours.
+- Language tag: traces from webhooks and `/llm` are tagged `lang:unknown`, because no ElevenLabs variable gives the caller's language. Candidate: read it from the language_detection tool call the proxy sees.
+(Eval format and scoring are tracked in docs/evals.md.)

@@ -65,6 +65,7 @@ Two seasons per room type: low (Nov to Mar) and high (Apr to Oct). No weekend up
 | idempotency_key | text unique | `call_id` + room type + dates + guest; a retried tool call returns the same reservation |
 | created_at | timestamptz | |
 | cancelled_at | timestamptz | nullable |
+| confirmation_sent_at | timestamptz | nullable; set when the confirmation email is claimed for sending, cleared on a failed send and by modify_booking (a new email is then due) |
 
 Double-booking is blocked by the database:
 `EXCLUDE USING gist (room_id WITH =, daterange(check_in, check_out) WITH &&) WHERE (status = 'confirmed')`
