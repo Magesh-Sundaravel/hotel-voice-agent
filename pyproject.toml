@@ -1,7 +1,7 @@
 [project]
 name = "hotel-voice-agent"
 version = "0.1.0"
-description = "Add your description here"
+description = "24/7 AI phone receptionist for a hotel, in Italian and English (ElevenLabs, Groq, FastAPI, Supabase)"
 authors = [
     { name = "Magesh Sundaravel", email = "magesh094@gmail.com" }
 ]
@@ -21,3 +21,10 @@ dev = [
     "pytest-asyncio>=1.4.1.post1",
     "ruff>=0.17.3",
 ]
+
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
