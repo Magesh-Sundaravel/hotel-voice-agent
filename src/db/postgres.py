@@ -17,6 +17,7 @@ from src.db.bookings import (
     new_reference,
     same_name,
 )
+from src.db.calls import CallEvent, CallLogEntry, CallLogError
 from src.db.hotel import Rate, RoomType
 
 
@@ -371,3 +372,57 @@ class PostgresBookingRepository:
             _BOOKING_SELECT + " where res.reference = $1", reference
         )
         return Booking(**dict(row))
+
+
+class PostgresCallLogRepository:
+    """The call log in Postgres: one upserted row per call_id."""
+
+    def __init__(self, db: asyncpg.Pool | asyncpg.Connection) -> None:
+        """Store the pool or connection to query."""
+        self._db = db
+
+    async def record(self, event: CallEvent) -> None:
+        """Create or merge the call's entry (see CallLogRepository.record).
+
+        The booking reference is stored as its reservation and that reservation's
+        guest, so the row holds ids only.
+
+        Raises:
+            CallLogError: The database refused the write or could not be reached.
+        """
+        try:
+            await self._db.execute(
+                "insert into call_log (call_id, language, outcome, needs_followup,"
+                " followup_reason, reservation_id, guest_id)"
+                " select $1, $2, $3, $4, $5, res.id, res.guest_id"
+                " from (select 1) as one"
+                " left join reservations res on res.reference = $6"
+                " on conflict (call_id) do update set"
+                " language = coalesce(excluded.language, call_log.language),"
+                " outcome = coalesce(excluded.outcome, call_log.outcome),"
+                " needs_followup = call_log.needs_followup or excluded.needs_followup,"
+                " followup_reason ="
+                " coalesce(excluded.followup_reason, call_log.followup_reason),"
+                " reservation_id ="
+                " coalesce(excluded.reservation_id, call_log.reservation_id),"
+                " guest_id = coalesce(excluded.guest_id, call_log.guest_id)",
+                event.call_id,
+                event.language,
+                event.outcome,
+                event.needs_followup,
+                event.followup_reason,
+                event.reference,
+            )
+        except (asyncpg.PostgresError, asyncpg.InterfaceError, OSError) as exc:
+            raise CallLogError(type(exc).__name__) from exc
+
+    async def get(self, call_id: str) -> CallLogEntry | None:
+        """Return the call's entry, or None."""
+        row = await self._db.fetchrow(
+            "select c.call_id, c.language, c.outcome, res.reference,"
+            " c.needs_followup, c.followup_reason"
+            " from call_log c left join reservations res on res.id = c.reservation_id"
+            " where c.call_id = $1",
+            call_id,
+        )
+        return CallLogEntry(**dict(row)) if row else None

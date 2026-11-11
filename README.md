@@ -103,7 +103,7 @@ docs/        architecture, tool contracts, data model, decisions, vendor notes
 - [ ] ElevenLabs agent and Telnyx number tested on a real call ([setup guide](docs/setup-elevenlabs-telnyx.md))
 - [x] Supabase schema, migrations, seed and Postgres repository for inventory and rates
 - [x] Repository writes for guests and reservations
-- [ ] Call log writes (needs the phone path)
+- [x] Call log writes from the tool webhooks (`ended_at` still needs the post-call webhook)
 - [x] Booking tools: create, modify and cancel a reservation, guest lookup by caller ID
 - [x] Gmail confirmation emails with an `.ics` invite
 - [ ] Follow-up email after a tool failure, and cancellation emails

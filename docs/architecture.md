@@ -61,6 +61,9 @@ Tools return `{ok: false, reason}`. The agent never promises a callback. After o
 - No email on file: ask the caller to spell it and read it back once. If they decline or it fails, apologise and ask them to call again.
 - `call_log` records `needs_followup` and `followup_reason`. No PII in the log.
 
+## Call log
+Every tool webhook also writes the call's `call_log` row, keyed by `call_id` (see data-model.md). It records the outcome (booked, modified, cancelled, message, followup), the reservation, the language once a tool is given one, and whether staff need to follow up. Like tracing, it never breaks a call.
+
 ## Gmail
 - Send (built): `send_confirmation_email` after create_booking and after modify_booking, to the email on file, in the language of the call. The tool answers at once and the email goes out in the background; the agent says it will arrive in a few minutes. `reservations.confirmation_sent_at` stops a second send; modify clears it.
 - The `.ics` is an iTIP `METHOD:REQUEST` (hotel as ORGANIZER, guest as ATTENDEE with `RSVP=FALSE`) with a stable UID per booking and a growing SEQUENCE, so a modified booking updates the same calendar event. Gmail may still show RSVP buttons (to check on the first real email). See docs/external/gmail.md.
