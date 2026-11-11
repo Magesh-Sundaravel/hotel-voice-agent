@@ -23,6 +23,8 @@ from src.tools.send_confirmation_email import (
     SendConfirmationEmailInput,
     send_confirmation_email,
 )
+from src.tools.send_followup_email import SendFollowupEmailInput, send_followup_email
+from src.tools.take_message import TakeMessageInput, take_message
 
 # What the model reads when it decides whether and how to call a tool. Follows
 # Anthropic's guidance: what it does, when to use it, what it returns, what it does
@@ -163,6 +165,38 @@ _SEND_CONFIRMATION_DESCRIPTION = (
     "no_email_on_file when the guest gave no email, so say nothing more about "
     "email."
 )
+_TAKE_MESSAGE_DESCRIPTION = (
+    "Passes a message from the caller to the hotel's reception team by email; this "
+    "is how the caller reaches a person, because you cannot transfer the call. "
+    "Use it when the caller asks for a person, a manager or a department, or wants "
+    "something no other tool does, such as a special request or a complaint, once "
+    "you have their first and last name and a short summary of what they want. "
+    "It returns ok once the message is on its way; then say you have passed it to "
+    "reception, without saying when or how they will reply. "
+    "It does not book, change or cancel anything and it does not email the caller "
+    "(use send_followup_email when a tool keeps failing). "
+    "On failure it returns a reason instead: "
+    "contact_required when the number is withheld and no phone or email was "
+    "passed, so ask for a phone number or an email; "
+    "invalid_phone when the phone is not in international format with the country "
+    "code, so ask again; "
+    "invalid_email when the email is not a valid address, so spell it back again."
+)
+_SEND_FOLLOWUP_DESCRIPTION = (
+    "Emails the caller so they can write down what they need and reception can "
+    "finish it by email, when you could not do it on the phone. "
+    "Use it only after a tool has failed with tool_error or tool_timeout, or "
+    "another failure the caller cannot fix, you tried once more and it failed "
+    "again, and the caller agreed to receive an email. "
+    "It returns ok once the email is on its way, to the email the caller spelled "
+    "or else the one on file; then say it will arrive in a few minutes. "
+    "It does not retry the failed tool or explain what went wrong, and it does not "
+    "pass a message to reception (use take_message for that). "
+    "On failure it returns a reason instead: "
+    "email_required when no email was passed and none is on file, so ask the "
+    "caller to spell one and read it back once; "
+    "invalid_email when the email is not a valid address, so spell it back again."
+)
 
 
 class Tool(BaseModel):
@@ -238,6 +272,14 @@ def build_registry(
             now or datetime.now(UTC),
         )
 
+    async def _message(inp: BaseModel) -> BaseModel:
+        return await take_message(email_sender, ctx, cast(TakeMessageInput, inp))
+
+    async def _followup(inp: BaseModel) -> BaseModel:
+        return await send_followup_email(
+            bookings, email_sender, ctx, cast(SendFollowupEmailInput, inp)
+        )
+
     tools = [
         Tool(
             name="check_availability",
@@ -286,6 +328,18 @@ def build_registry(
             description=_SEND_CONFIRMATION_DESCRIPTION,
             input_model=SendConfirmationEmailInput,
             handler=_confirm,
+        ),
+        Tool(
+            name="take_message",
+            description=_TAKE_MESSAGE_DESCRIPTION,
+            input_model=TakeMessageInput,
+            handler=_message,
+        ),
+        Tool(
+            name="send_followup_email",
+            description=_SEND_FOLLOWUP_DESCRIPTION,
+            input_model=SendFollowupEmailInput,
+            handler=_followup,
         ),
     ]
     return {t.name: t for t in tools}

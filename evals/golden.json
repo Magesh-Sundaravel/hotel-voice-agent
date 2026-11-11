@@ -930,6 +930,226 @@
           }
         }
       ]
+    },
+    {
+      "id": "en-message-for-manager",
+      "language": "en",
+      "caller_phone": "+12025550102",
+      "tags": [
+        "take-message",
+        "handoff"
+      ],
+      "turns": [
+        {
+          "caller": "Hi, can I speak to the manager please?",
+          "expect": {
+            "forbidden_tools": [
+              "send_followup_email",
+              "create_booking"
+            ]
+          }
+        },
+        {
+          "caller": "Sure, please take a message. It's James Carter, and it's about a noise complaint from my stay last month.",
+          "expect": {
+            "tool_calls": [
+              {
+                "name": "take_message",
+                "args": {
+                  "first_name": "James",
+                  "last_name": "Carter",
+                  "language": "en"
+                }
+              }
+            ],
+            "forbidden_tools": [
+              "send_followup_email"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "it-message-withheld-number",
+      "language": "it",
+      "caller_phone": null,
+      "tags": [
+        "take-message",
+        "handoff",
+        "withheld-caller-id"
+      ],
+      "turns": [
+        {
+          "caller": "Buongiorno, sono Lucia Verdi. Vorrei parlare con l'ufficio eventi per organizzare un pranzo di matrimonio a giugno.",
+          "expect": {
+            "forbidden_tools": [
+              "send_followup_email",
+              "create_booking"
+            ]
+          }
+        },
+        {
+          "caller": "Certo, il mio numero è +393331234567.",
+          "expect": {
+            "tool_calls": [
+              {
+                "name": "take_message",
+                "args": {
+                  "last_name": "Verdi",
+                  "phone": "+393331234567",
+                  "language": "it"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "en-tool-failure-email-on-file",
+      "language": "en",
+      "caller_phone": "+12025550102",
+      "failing_tools": [
+        "check_availability"
+      ],
+      "tags": [
+        "tool-failure",
+        "followup-email"
+      ],
+      "turns": [
+        {
+          "caller": "Hi, do you have a room for two from December 10th to 12th?",
+          "expect": {
+            "tool_calls": [
+              {
+                "name": "check_availability",
+                "args": {
+                  "check_in": "2026-12-10",
+                  "check_out": "2026-12-12"
+                }
+              }
+            ],
+            "forbidden_tools": [
+              "send_followup_email",
+              "take_message"
+            ]
+          }
+        },
+        {
+          "caller": "Yes, please send me that email.",
+          "expect": {
+            "tool_calls": [
+              {
+                "name": "send_followup_email",
+                "args": {
+                  "language": "en"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "it-tool-failure-spell-email",
+      "language": "it",
+      "caller_phone": null,
+      "failing_tools": [
+        "check_availability"
+      ],
+      "tags": [
+        "tool-failure",
+        "followup-email",
+        "withheld-caller-id"
+      ],
+      "turns": [
+        {
+          "caller": "Buonasera, avete una camera per due persone dal 10 al 12 dicembre?",
+          "expect": {
+            "tool_calls": [
+              {
+                "name": "check_availability",
+                "args": {
+                  "check_in": "2026-12-10",
+                  "check_out": "2026-12-12"
+                }
+              }
+            ],
+            "forbidden_tools": [
+              "send_followup_email",
+              "take_message"
+            ]
+          }
+        },
+        {
+          "caller": "Sì, va bene, mi mandi pure l'email.",
+          "expect": {
+            "tool_calls": [
+              {
+                "name": "send_followup_email",
+                "args": {
+                  "language": "it"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "caller": "È lucia.verdi@example.com.",
+          "expect": {}
+        },
+        {
+          "caller": "Sì, è giusta.",
+          "expect": {
+            "tool_calls": [
+              {
+                "name": "send_followup_email",
+                "args": {
+                  "email": "lucia.verdi@example.com",
+                  "language": "it"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "en-tool-failure-caller-declines",
+      "language": "en",
+      "caller_phone": "+12025550102",
+      "failing_tools": [
+        "get_booking"
+      ],
+      "tags": [
+        "tool-failure",
+        "followup-email"
+      ],
+      "turns": [
+        {
+          "caller": "Hi, I'd like to check my booking, reference 615204, last name Carter.",
+          "expect": {
+            "tool_calls": [
+              {
+                "name": "get_booking",
+                "args": {
+                  "reference": "615204"
+                }
+              }
+            ],
+            "forbidden_tools": [
+              "send_followup_email",
+              "take_message"
+            ]
+          }
+        },
+        {
+          "caller": "No thanks, I'll just call back later.",
+          "expect": {
+            "must_not_call_tools": true
+          }
+        }
+      ]
     }
   ]
 }

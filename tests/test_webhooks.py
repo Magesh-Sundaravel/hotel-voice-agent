@@ -13,6 +13,7 @@ import pytest_asyncio
 from src import observability
 from src.agent import loop
 from src.config import Settings
+from src.db.calls import CallEvent, CallLogError, InMemoryCallLogRepository
 from src.db.hotel import RoomType
 from src.db.seed import seed_repository
 from src.email.sender import FakeEmailSender
@@ -30,16 +31,22 @@ def _services(secret: str = SECRET) -> Services:
     return Services(
         hotel=repo,
         bookings=repo,
+        calls=InMemoryCallLogRepository(),
         sender=FakeEmailSender(),
         settings=Settings(webhook_secret=secret),
         http=httpx.AsyncClient(),
     )
 
 
+@pytest.fixture
+def services() -> Services:
+    """The in-memory seed hotel, with an empty call log."""
+    return _services()
+
+
 @pytest_asyncio.fixture
-async def client() -> AsyncIterator[httpx.AsyncClient]:
+async def client(services: Services) -> AsyncIterator[httpx.AsyncClient]:
     """The app wired to the in-memory seed hotel."""
-    services = _services()
     app.dependency_overrides[get_services] = lambda: services
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
@@ -158,7 +165,7 @@ async def test_a_tool_gets_its_arguments_from_the_body(
     assert body["ok"] is True
     assert {o["room_type"] for o in body["options"]} == {
         "Suite",
-        "Barberini Penthouse Suite",
+        "Aurelia Penthouse Suite",
     }
 
 
@@ -251,3 +258,149 @@ async def test_each_request_is_a_trace_in_the_call_session(
     trace, tool = fake.observations
     assert trace.started["name"] == "handle-tool-webhook"
     assert tool.started["name"] == "get_guest_info"
+
+
+def _booking_body(**overrides: object) -> dict[str, object]:
+    fields: dict[str, object] = {
+        "room_type": "Superior",
+        "check_in": str(date(2027, 2, 3)),
+        "check_out": str(date(2027, 2, 5)),
+        "adults": 2,
+        "first_name": "Giulia",
+        "last_name": "Rossi",
+        "language": "it",
+    }
+    fields.update(overrides)
+    return _body(**fields)
+
+
+@pytest.mark.asyncio
+async def test_any_tool_call_opens_the_call_log_entry(
+    client: httpx.AsyncClient, services: Services
+) -> None:
+    """A call that used a tool is logged, even when nothing was booked."""
+    await client.post("/tools/get_guest_info", json=_body(), headers=HEADERS)
+
+    entry = await services.calls.get("conv-1")
+    assert entry is not None
+    assert (entry.outcome, entry.language, entry.reference) == (None, None, None)
+    assert entry.needs_followup is False
+
+
+@pytest.mark.asyncio
+async def test_a_booking_is_logged_with_its_reference_and_language(
+    client: httpx.AsyncClient, services: Services
+) -> None:
+    """The call log keeps the outcome and the booking, by id only."""
+    response = await client.post(
+        "/tools/create_booking", json=_booking_body(), headers=HEADERS
+    )
+
+    entry = await services.calls.get("conv-1")
+    assert entry is not None
+    assert entry.outcome == "booked"
+    assert entry.language == "it"
+    assert entry.reference == response.json()["reference"]
+
+
+@pytest.mark.asyncio
+async def test_a_cancellation_is_logged(
+    client: httpx.AsyncClient, services: Services
+) -> None:
+    """Seed booking 482913 belongs to Giulia Rossi."""
+    await client.post(
+        "/tools/cancel_booking",
+        json=_body(reference="482913", last_name="Rossi"),
+        headers=HEADERS,
+    )
+
+    entry = await services.calls.get("conv-1")
+    assert entry is not None
+    assert (entry.outcome, entry.reference) == ("cancelled", "482913")
+
+
+@pytest.mark.asyncio
+async def test_a_failed_tool_records_no_outcome(
+    client: httpx.AsyncClient, services: Services
+) -> None:
+    """Only a tool that worked changes the outcome."""
+    await client.post(
+        "/tools/create_booking", json=_booking_body(adults=0), headers=HEADERS
+    )
+
+    entry = await services.calls.get("conv-1")
+    assert entry is not None
+    assert entry.outcome is None
+
+
+class _BrokenCallLog(InMemoryCallLogRepository):
+    async def record(self, event: CallEvent) -> None:
+        raise CallLogError("ConnectionDoesNotExistError")
+
+
+class _SlowCallLog(InMemoryCallLogRepository):
+    async def record(self, event: CallEvent) -> None:
+        await asyncio.sleep(1)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("calls", [_BrokenCallLog(), _SlowCallLog()])
+async def test_the_call_log_never_breaks_a_call(
+    client: httpx.AsyncClient,
+    services: Services,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    calls: InMemoryCallLogRepository,
+) -> None:
+    """A failing or slow call log is a warning; the agent still gets its answer."""
+    monkeypatch.setattr("src.voice.webhooks.CALL_LOG_TIMEOUT_S", 0.01)
+    services.calls = calls
+
+    with caplog.at_level("WARNING", logger="src.voice.webhooks"):
+        response = await client.post(
+            "/tools/create_booking", json=_booking_body(), headers=HEADERS
+        )
+
+    assert response.json()["ok"] is True
+    assert "call log" in caplog.text
+    assert "conv-1" in caplog.text
+    assert "Rossi" not in caplog.text and GIULIA_PHONE not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_a_message_flags_the_call_for_reception(
+    client: httpx.AsyncClient, services: Services
+) -> None:
+    """take_message leaves the outcome alone and sets needs_followup."""
+    response = await client.post(
+        "/tools/take_message",
+        json=_body(
+            first_name="Giulia",
+            last_name="Rossi",
+            message="Vorrebbe parlare con il direttore.",
+            language="it",
+        ),
+        headers=HEADERS,
+    )
+
+    assert response.json() == {"ok": True}
+    entry = await services.calls.get("conv-1")
+    assert entry is not None
+    assert (entry.needs_followup, entry.followup_reason) == (True, "message")
+    assert entry.language == "it" and entry.outcome is None
+
+
+@pytest.mark.asyncio
+async def test_a_followup_email_flags_the_call_with_its_topic(
+    client: httpx.AsyncClient, services: Services
+) -> None:
+    """The reason says what the caller could not finish; no PII."""
+    await client.post(
+        "/tools/send_followup_email",
+        json=_body(call_id="conv-fu", topic="change", language="en"),
+        headers=HEADERS,
+    )
+
+    entry = await services.calls.get("conv-fu")
+    assert entry is not None
+    assert entry.followup_reason == "tool_failure:change"

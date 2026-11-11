@@ -431,3 +431,16 @@ async def test_modifying_a_booking_allows_a_new_confirmation(repos: Repos) -> No
     await repos.bookings.modify_booking(created.reference, "Testa", change(adults=1))
 
     assert await repos.bookings.claim_confirmation(created.reference, SENT_AT)
+
+
+@pytest.mark.asyncio
+async def test_the_guest_contact_is_found_by_phone(repos: Repos) -> None:
+    """The follow-up email needs the stored address; it never reaches the model."""
+    assert await repos.bookings.find_guest_contact("+12025550199") is None
+    await repos.bookings.create_booking(new_booking(email="ada@guest.example"))
+
+    contact = await repos.bookings.find_guest_contact("+12025550199")
+
+    assert contact is not None
+    assert (contact.first_name, contact.email) == ("Ada", "ada@guest.example")
+    assert contact.guest_id

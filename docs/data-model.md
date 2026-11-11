@@ -78,27 +78,31 @@ Modify and cancel are idempotent by `reference`.
 | id | uuid pk | |
 | call_id | text unique | ElevenLabs conversation id; same value tagged on the Langfuse trace |
 | guest_id | uuid fk guests | nullable |
-| language | text | `it` or `en` |
+| language | text | nullable; `it` or `en`, from the first tool that is given a language |
 | started_at | timestamptz | |
 | ended_at | timestamptz | nullable |
-| outcome | text | e.g. `booked`, `modified`, `cancelled`, `info`, `failed` |
-| needs_followup | bool | a follow-up email was or should have been sent |
-| followup_reason | text | nullable; no PII |
+| outcome | text | nullable; `booked`, `modified` or `cancelled`; the latest wins |
+| needs_followup | bool | reception has something to do: a message (take_message) or a follow-up email to answer (send_followup_email) |
+| followup_reason | text | nullable; `message` or `tool_failure:<topic>`; no PII |
 | reservation_id | uuid fk reservations | nullable |
+
+Written by the tool webhook (`src/voice/call_log.py`, `src/db/calls.py`): the first tool call in a call creates the row, later ones fill it in. A field left unset keeps its value, the latest outcome wins, and `needs_followup` once set stays set. `guest_id` comes from the reservation the call touched. A call that never uses a tool has no row. `ended_at` is not written yet (it needs ElevenLabs' post-call webhook).
+
+A failed or slow write (over 0.5 s) is logged as a warning with the call_id only, and the tool's answer is returned anyway.
 
 No transcripts and no names, phones or emails in this table. Traces go to Langfuse with masking.
 
 ## Seed hotel
-Fictional data modelled on Sina Bernini Bristol, Rome (Piazza Barberini 23, five stars). Only the public name, address and room type names are real. Everything else is invented, and phone numbers are fake.
+A fictional hotel: Hotel Corte Aurelia, Via della Lupa 12, Rome, five stars. The hotel, its address number, room types, rates, guests and bookings are all invented, and phone numbers are fake.
 
 | Room type | Rooms | max_guests |
 |---|---|---|
 | Superior | 10 | 2 |
 | Deluxe | 8 | 2 |
-| Executive Deluxe Piazza View | 5 | 3 |
+| Executive Deluxe Courtyard View | 5 | 3 |
 | Junior Suite | 4 | 3 |
 | Suite | 2 | 4 |
-| Barberini Penthouse Suite | 1 | 4 |
+| Aurelia Penthouse Suite | 1 | 4 |
 
 30 rooms in total. Rates are invented per night in EUR for the low and high seasons, rising with room type.
 

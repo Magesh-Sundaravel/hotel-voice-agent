@@ -10,7 +10,11 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 
 from src.config import Settings
-from src.db.postgres import PostgresBookingRepository, PostgresHotelRepository
+from src.db.postgres import (
+    PostgresBookingRepository,
+    PostgresCallLogRepository,
+    PostgresHotelRepository,
+)
 from src.email.sender import GmailSender
 from src.tools.send_confirmation_email import drain_background
 from src.voice import llm_proxy, webhooks
@@ -30,6 +34,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             app.state.services = webhooks.Services(
                 hotel=PostgresHotelRepository(pool),
                 bookings=PostgresBookingRepository(pool),
+                calls=PostgresCallLogRepository(pool),
                 sender=GmailSender(
                     http,
                     address=settings.gmail_sender,

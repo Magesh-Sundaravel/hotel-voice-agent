@@ -12,6 +12,7 @@ import pytest_asyncio
 from src import observability
 from src.agent.llm import GROQ_CHAT_URL
 from src.config import Settings
+from src.db.calls import InMemoryCallLogRepository
 from src.db.seed import seed_repository
 from src.email.sender import FakeEmailSender
 from src.main import app
@@ -62,6 +63,7 @@ async def groq() -> AsyncIterator[FakeGroq]:
     services = Services(
         hotel=repo,
         bookings=repo,
+        calls=InMemoryCallLogRepository(),
         sender=FakeEmailSender(),
         settings=Settings(webhook_secret=SECRET, groq_api_key="gk", groq_model="gm"),
         http=httpx.AsyncClient(transport=httpx.MockTransport(fake)),

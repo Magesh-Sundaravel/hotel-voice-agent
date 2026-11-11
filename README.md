@@ -33,12 +33,12 @@ Why these choices: [docs/decisions/](docs/decisions/).
 ## What works today
 
 - Agent loop with native tool calling and no graph framework (`src/agent/`)
-- Tools: `check_availability`, `get_rates`, `get_guest_info`, `create_booking`, `get_booking`, `modify_booking`, `cancel_booking` and `send_confirmation_email` (Gmail, with an `.ics` invite), backed by an in-memory seed repository in the CLI and evals, with a Postgres version tested against Supabase (`src/tools/`, `src/db/`)
+- Tools: `check_availability`, `get_rates`, `get_guest_info`, `create_booking`, `get_booking`, `modify_booking`, `cancel_booking`, `send_confirmation_email` (Gmail, with an `.ics` invite), `take_message` (a message for reception, the handoff to a person) and `send_followup_email` (after a tool keeps failing), backed by an in-memory seed repository in the CLI and evals, with a Postgres version tested against Supabase (`src/tools/`, `src/db/`)
 - `/llm/v1/chat/completions`: OpenAI-compatible proxy that ElevenLabs uses as its custom LLM. It adds our system prompt, forwards to Groq, streams the reply back and traces it (`src/voice/llm_proxy.py`)
 - `POST /tools/{name}`: tool webhooks for ElevenLabs, authenticated with a shared secret and running the same code as the CLI and evals (`src/voice/webhooks.py`)
 - Tool configs for the ElevenLabs dashboard, exported from the registry (`src/voice/export_tools.py`)
 - Langfuse tracing of model calls, tool calls and eval runs, with PII masking (`src/observability.py`)
-- Bilingual golden eval dataset (31 cases, Italian and English) with a runner and scorer (`evals/`)
+- Bilingual golden eval dataset (36 cases, Italian and English) with a runner and scorer (`evals/`)
 - `/health` endpoint, Dockerfile, Compose file and CI for lint and tests
 
 Tool contracts are in [docs/tools.md](docs/tools.md).
@@ -103,13 +103,15 @@ docs/        architecture, tool contracts, data model, decisions, vendor notes
 - [ ] ElevenLabs agent and Telnyx number tested on a real call ([setup guide](docs/setup-elevenlabs-telnyx.md))
 - [x] Supabase schema, migrations, seed and Postgres repository for inventory and rates
 - [x] Repository writes for guests and reservations
-- [ ] Call log writes (needs the phone path)
+- [x] Call log writes from the tool webhooks (`ended_at` still needs the post-call webhook)
 - [x] Booking tools: create, modify and cancel a reservation, guest lookup by caller ID
 - [x] Gmail confirmation emails with an `.ics` invite
-- [ ] Follow-up email after a tool failure, and cancellation emails
+- [x] Follow-up email after a tool failure, and messages for reception
+- [ ] Cancellation emails
 - [ ] Language tag (it/en) on live call traces
 - [x] Eval cases for booking and returning callers
-- [ ] More eval cases: tool failure, language switching, withheld caller ID
+- [x] Eval cases for tool failure, messages and withheld caller ID
+- [ ] Eval cases for language switching
 - [x] CI for lint and tests
 - [ ] Evals in CI (needs Groq and Langfuse keys)
 - [ ] AWS deployment (ECS Fargate), as a future option

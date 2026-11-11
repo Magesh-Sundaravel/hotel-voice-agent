@@ -13,10 +13,10 @@ from src.db.hotel import Rate, RoomType
 _ROOMS = [
     ("Superior", 2, 10, 220, 320),
     ("Deluxe", 2, 8, 280, 390),
-    ("Executive Deluxe Piazza View", 3, 5, 340, 460),
+    ("Executive Deluxe Courtyard View", 3, 5, 340, 460),
     ("Junior Suite", 3, 4, 420, 560),
     ("Suite", 4, 2, 650, 850),
-    ("Barberini Penthouse Suite", 4, 1, 1400, 1900),
+    ("Aurelia Penthouse Suite", 4, 1, 1400, 1900),
 ]
 
 # Low season is Nov to Mar, high season is Apr to Oct.
@@ -93,7 +93,7 @@ BOOKINGS = [
     _booking(
         "482913",
         _GIULIA,
-        "Barberini Penthouse Suite",
+        "Aurelia Penthouse Suite",
         date(2026, 12, 24),
         date(2026, 12, 28),
     ),

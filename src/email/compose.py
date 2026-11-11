@@ -7,7 +7,7 @@ from typing import Literal
 from src.db.bookings import Booking
 from src.email.ics import booking_ics
 
-HOTEL_NAME = "Sina Bernini Bristol"
+HOTEL_NAME = "Hotel Corte Aurelia"
 
 _WEEKDAYS = {
     "en": ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"),
@@ -30,7 +30,7 @@ _TEXT = {
     "en": {
         "subject": "Your booking at {hotel}, reference {reference}",
         "summary": "{hotel}, booking {reference}",
-        "location": "Piazza Barberini 23, Rome",
+        "location": "Via della Lupa 12, Rome",
         "body": (
             "Dear {first_name},\n\n"
             "thank you for booking with {hotel}. Here are your booking details.\n\n"
@@ -45,13 +45,13 @@ _TEXT = {
             "cancel, call us with your reference and last name.\n\n"
             "The attached invite adds your stay to your calendar.\n\n"
             "{hotel}\n"
-            "Piazza Barberini 23, Rome\n"
+            "Via della Lupa 12, Rome\n"
         ),
     },
     "it": {
         "subject": "La sua prenotazione al {hotel}, codice {reference}",
         "summary": "{hotel}, prenotazione {reference}",
-        "location": "Piazza Barberini 23, Roma",
+        "location": "Via della Lupa 12, Roma",
         "body": (
             "Gentile {first_name},\n\n"
             "grazie per aver prenotato al {hotel}. Ecco i dettagli della sua "
@@ -67,7 +67,7 @@ _TEXT = {
             "modificare o cancellare, ci chiami con il codice e il cognome.\n\n"
             "L'invito allegato aggiunge il soggiorno al suo calendario.\n\n"
             "{hotel}\n"
-            "Piazza Barberini 23, Roma\n"
+            "Via della Lupa 12, Roma\n"
         ),
     },
 }
