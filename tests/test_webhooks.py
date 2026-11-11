@@ -1,6 +1,7 @@
 """Tests for the ElevenLabs tool webhooks: POST /tools/{name}."""
 
 import asyncio
+from collections import OrderedDict
 from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
 from datetime import date
@@ -234,7 +235,10 @@ async def test_the_call_id_keys_a_retried_booking(client: httpx.AsyncClient) -> 
 async def test_each_request_is_a_trace_in_the_call_session(
     client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Webhook traces join the call's Langfuse session, keyed by call_id."""
+    """Webhook traces join the call's Langfuse session, keyed by call_id.
+
+    With no language known for the call yet, the agent's primary language is used.
+    """
     fake = FakeClient()
     monkeypatch.setattr(observability, "_get_client", lambda: fake)
     propagated: list[dict[str, Any]] = []
@@ -252,7 +256,7 @@ async def test_each_request_is_a_trace_in_the_call_session(
         {
             "session_id": "conv-1",
             "trace_name": "handle-tool-webhook",
-            "tags": ["lang:unknown"],
+            "tags": ["lang:en"],
         }
     ]
     trace, tool = fake.observations
@@ -283,7 +287,8 @@ async def test_any_tool_call_opens_the_call_log_entry(
 
     entry = await services.calls.get("conv-1")
     assert entry is not None
-    assert (entry.outcome, entry.language, entry.reference) == (None, None, None)
+    assert (entry.outcome, entry.reference) == (None, None)
+    assert entry.language is None  # a guess is for traces only, never stored
     assert entry.needs_followup is False
 
 
@@ -404,3 +409,18 @@ async def test_a_followup_email_flags_the_call_with_its_topic(
     entry = await services.calls.get("conv-fu")
     assert entry is not None
     assert entry.followup_reason == "tool_failure:change"
+
+
+@pytest.mark.asyncio
+async def test_the_default_language_never_overwrites_a_known_one(
+    client: httpx.AsyncClient, services: Services, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """After a restart the server forgets the call's language; the log keeps 'it'."""
+    await client.post("/tools/create_booking", json=_booking_body(), headers=HEADERS)
+    monkeypatch.setattr("src.voice.call_language._known", OrderedDict())  # restart
+
+    await client.post("/tools/get_guest_info", json=_body(), headers=HEADERS)
+
+    entry = await services.calls.get("conv-1")
+    assert entry is not None
+    assert entry.language == "it"

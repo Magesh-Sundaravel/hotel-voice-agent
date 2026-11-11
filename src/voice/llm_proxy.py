@@ -22,6 +22,7 @@ from src import observability
 from src.agent.llm import GROQ_CHAT_URL
 from src.agent.prompt import build_system_prompt
 from src.tools.stay import hotel_today
+from src.voice.call_language import Language, call_language
 from src.voice.webhooks import Services, get_services, require_secret
 
 logger = logging.getLogger(__name__)
@@ -92,14 +93,18 @@ def _reply_from_sse(raw: bytes) -> Any:
 
 
 def _trace(
-    call_id: str, model: str, messages: list[dict[str, Any]], raw: bytes
+    call_id: str,
+    language: Language,
+    model: str,
+    messages: list[dict[str, Any]],
+    raw: bytes,
 ) -> None:
     """Record the request as one generation in the call's session."""
     last_user = next(
         (m.get("content") for m in reversed(messages) if m.get("role") == "user"), ""
     )
     with (
-        observability.call_session(call_id, "unknown"),
+        observability.call_session(call_id, language),
         observability.turn_span(str(last_user), name=LLM_TRACE_NAME),
         observability.generation(model, messages) as gen,
     ):
@@ -107,7 +112,11 @@ def _trace(
 
 
 async def _relay(
-    upstream: httpx.Response, call_id: str, model: str, messages: list[dict[str, Any]]
+    upstream: httpx.Response,
+    call_id: str,
+    language: Language,
+    model: str,
+    messages: list[dict[str, Any]],
 ) -> AsyncIterator[bytes]:
     """Pass Groq's (decompressed) bytes through, then trace what was said.
 
@@ -121,7 +130,7 @@ async def _relay(
             yield chunk
     finally:
         try:
-            _trace(call_id, model, messages, bytes(received))
+            _trace(call_id, language, model, messages, bytes(received))
         finally:
             await upstream.aclose()
 
@@ -154,6 +163,7 @@ async def chat_completions(
         sorted(set(extra) - set(_FORWARDED_FIELDS)),
     )
     settings = services.settings
+    language = call_language(x_call_id, body.messages, settings.agent_language)
     messages = _with_our_prompt(body.messages)
     payload = {
         **{k: v for k, v in extra.items() if k in _FORWARDED_FIELDS},
@@ -178,7 +188,7 @@ async def chat_completions(
         logger.warning("Groq returned HTTP %s", upstream.status_code)
         return JSONResponse(ProxyError(error="upstream_error").model_dump(), 502)
     return StreamingResponse(
-        _relay(upstream, x_call_id, settings.groq_model, messages),
+        _relay(upstream, x_call_id, language, settings.groq_model, messages),
         media_type="text/event-stream",
         # Closes Groq's stream even if the response body is never iterated.
         background=BackgroundTask(upstream.aclose),

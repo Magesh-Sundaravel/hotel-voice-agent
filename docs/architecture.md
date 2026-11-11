@@ -85,5 +85,5 @@ To settle on the first real call (see docs/setup-elevenlabs-telnyx.md):
 - Whether a dynamic-variable header resolves `system__conversation_id` on the custom LLM (`X-Call-Id`); if not, LLM traces land in session "unknown".
 - What ElevenLabs puts in its own system message, now placed after ours.
 - Whether Gmail and Google Calendar remove the event when the cancellation's `METHOD:CANCEL` update arrives (docs/external/gmail.md marks it UNVERIFIED); check on the first real cancellation.
-- Language tag: traces from webhooks and `/llm` are tagged `lang:unknown`, because no ElevenLabs variable gives the caller's language. Candidate: read it from the language_detection tool call the proxy sees.
+- Language tag: no ElevenLabs variable gives the caller's language, so the `/llm` proxy reads it from the latest `language_detection` call in the conversation, else uses `AGENT_LANGUAGE` (the agent's default language, `en` as in docs/setup-elevenlabs-telnyx.md), and remembers it per call_id for the tool webhooks (`src/voice/call_language.py`). This needs `X-Call-Id` to resolve (above); without it, traces get `AGENT_LANGUAGE`. Unverified: the name and argument format ElevenLabs uses for `language_detection` in the messages it sends; `it`, `it-IT` and `Italian` are all accepted.
 (Eval format and scoring are tracked in docs/evals.md.)

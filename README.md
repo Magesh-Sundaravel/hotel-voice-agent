@@ -108,7 +108,7 @@ docs/        architecture, tool contracts, data model, decisions, vendor notes
 - [x] Gmail confirmation emails with an `.ics` invite
 - [x] Follow-up email after a tool failure, and messages for reception
 - [x] Cancellation emails (`METHOD:CANCEL` removes the calendar event)
-- [ ] Language tag (it/en) on live call traces
+- [x] Language tag (it/en) on live call traces, from ElevenLabs' language_detection calls
 - [x] Eval cases for booking and returning callers
 - [x] Eval cases for tool failure, messages and withheld caller ID
 - [ ] Eval cases for language switching
