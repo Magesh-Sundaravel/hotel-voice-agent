@@ -319,7 +319,9 @@ class PostgresBookingRepository:
         """Cancel a booking at `now`; an already cancelled one is returned unchanged."""
         async with _transaction(self._db) as conn:
             await conn.execute(
-                "update reservations res set status = 'cancelled', cancelled_at = $3"
+                # Clearing the mark makes the cancellation email due.
+                "update reservations res set status = 'cancelled', cancelled_at = $3,"
+                " confirmation_sent_at = null"
                 " from guests g where g.id = res.guest_id and res.reference = $1"
                 " and lower(g.last_name) = lower(trim($2)) and res.status = 'confirmed'",
                 reference,

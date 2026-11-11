@@ -73,6 +73,48 @@ _TEXT = {
 }
 
 
+_CANCEL_TEXT = {
+    "en": {
+        "subject": "Your booking at {hotel} is cancelled, reference {reference}",
+        "body": (
+            "Dear {first_name},\n\n"
+            "your booking {reference} at {hotel} is cancelled.\n\n"
+            "Room: {room_type}\n"
+            "Arrival: {check_in}\n"
+            "Departure: {check_out}\n\n"
+            "{policy}"
+            "The attached update removes the stay from your calendar.\n\n"
+            "{hotel}\n"
+            "Via della Lupa 12, Rome\n"
+        ),
+        "free": "There is nothing to pay for this cancellation.\n\n",
+        "late": (
+            "As it was cancelled less than 48 hours before check-in, the "
+            "cancellation policy charge may apply.\n\n"
+        ),
+    },
+    "it": {
+        "subject": "La sua prenotazione al {hotel} è cancellata, codice {reference}",
+        "body": (
+            "Gentile {first_name},\n\n"
+            "la sua prenotazione {reference} al {hotel} è stata cancellata.\n\n"
+            "Camera: {room_type}\n"
+            "Arrivo: {check_in}\n"
+            "Partenza: {check_out}\n\n"
+            "{policy}"
+            "L'aggiornamento allegato rimuove il soggiorno dal suo calendario.\n\n"
+            "{hotel}\n"
+            "Via della Lupa 12, Roma\n"
+        ),
+        "free": "Per questa cancellazione non c'è nulla da pagare.\n\n",
+        "late": (
+            "Poiché è stata cancellata meno di 48 ore prima del check-in, potrebbe "
+            "essere applicata la penale prevista dalla politica di cancellazione.\n\n"
+        ),
+    },
+}
+
+
 def _date_words(day: date, language: Literal["it", "en"]) -> str:
     """A date as a person writes it: 'Thursday 10 December 2026'."""
     weekday = _WEEKDAYS[language][day.weekday()]
@@ -131,5 +173,62 @@ def confirmation_message(
         subtype="calendar",
         filename="booking.ics",
         params={"method": "REQUEST", "charset": "UTF-8"},
+    )
+    return msg
+
+
+def cancellation_message(
+    booking: Booking,
+    *,
+    to: str,
+    sender: str,
+    language: Literal["it", "en"],
+    now: datetime,
+    late: bool,
+) -> EmailMessage:
+    """Build the cancellation email, with an update that removes the calendar event.
+
+    Args:
+        booking: The cancelled booking.
+        to: The guest's email.
+        sender: The hotel's sending address.
+        language: The language of the call.
+        now: Send time, for the update's DTSTAMP and SEQUENCE.
+        late: Cancelled inside 48 hours of check-in; the policy charge may apply.
+            No amount is ever named.
+
+    Returns:
+        A plain-text email with `booking.ics` (METHOD:CANCEL, same UID) attached.
+    """
+    text = _CANCEL_TEXT[language]
+    fields = {
+        "hotel": HOTEL_NAME,
+        "reference": booking.reference,
+        "first_name": booking.first_name,
+        "room_type": booking.room_type,
+        "check_in": _date_words(booking.check_in, language),
+        "check_out": _date_words(booking.check_out, language),
+        "policy": text["late"] if late else text["free"],
+    }
+    msg = EmailMessage()
+    msg["From"] = f"{HOTEL_NAME} <{sender}>"
+    msg["To"] = to
+    msg["Subject"] = text["subject"].format(**fields)
+    msg.set_content(text["body"].format(**fields))
+    update = booking_ics(
+        booking,
+        organizer=sender,
+        attendee=to,
+        summary=_TEXT[language]["summary"].format(**fields),
+        location=_TEXT[language]["location"],
+        now=now,
+        method="CANCEL",
+    )
+    msg.add_attachment(
+        update,
+        maintype="text",
+        subtype="calendar",
+        filename="booking.ics",
+        params={"method": "CANCEL", "charset": "UTF-8"},
     )
     return msg

@@ -27,7 +27,7 @@ One-time steps only a human can do, in order. Each ends with a check. Vendor fac
      - `X-Webhook-Secret`: type Secret, the secret above.
      - `X-Call-Id`: type dynamic variable, `system__conversation_id`.
 3. Agent > Prompt: a one-line placeholder such as "The system prompt is supplied by the backend." The proxy puts the real prompt first.
-4. Languages: English as the default plus an Italian preset, each with its own first message. Turn on the `language_detection` system tool.
+4. Languages: English as the default plus an Italian preset, each with its own first message. Turn on the `language_detection` system tool. The default language must match `AGENT_LANGUAGE` in `.env` (`en`), which tags traces and the call log until the caller switches.
 5. Tools: run `uv run python -m src.voice.export_tools --base-url https://<domain> --secret-id <id>` and add each of the 8 configs as a webhook tool (JSON editor).
    - Check: the dashboard accepts the outer fields `type: "webhook"` and `api_schema`, and the per-property `dynamic_variable`. If it renames anything, fix `src/voice/export_tools.py` and note it in docs/external/elevenlabs.md.
 - Check: talk to the agent from the ElevenLabs test widget. Ask for availability, then book with an email. In the backend logs:

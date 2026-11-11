@@ -444,3 +444,26 @@ async def test_the_guest_contact_is_found_by_phone(repos: Repos) -> None:
     assert contact is not None
     assert (contact.first_name, contact.email) == ("Ada", "ada@guest.example")
     assert contact.guest_id
+
+
+@pytest.mark.asyncio
+async def test_cancelling_makes_a_new_email_due(repos: Repos) -> None:
+    """The confirmation was sent; the cancellation is news, so the mark is cleared."""
+    created = await repos.bookings.create_booking(new_booking())
+    assert await repos.bookings.claim_confirmation(created.reference, SENT_AT)
+
+    await repos.bookings.cancel_booking(created.reference, "Testa", SENT_AT)
+
+    assert await repos.bookings.claim_confirmation(created.reference, SENT_AT)
+
+
+@pytest.mark.asyncio
+async def test_cancelling_again_keeps_the_mark(repos: Repos) -> None:
+    """A retried cancel must not make the cancellation email go out twice."""
+    created = await repos.bookings.create_booking(new_booking())
+    await repos.bookings.cancel_booking(created.reference, "Testa", SENT_AT)
+    assert await repos.bookings.claim_confirmation(created.reference, SENT_AT)
+
+    await repos.bookings.cancel_booking(created.reference, "Testa", SENT_AT)
+
+    assert not await repos.bookings.claim_confirmation(created.reference, SENT_AT)

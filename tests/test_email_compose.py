@@ -3,8 +3,10 @@
 from datetime import UTC, date, datetime
 from email import message_from_bytes, policy
 
+import pytest
+
 from src.db.bookings import Booking
-from src.email.compose import confirmation_message
+from src.email.compose import cancellation_message, confirmation_message
 from src.email.ics import booking_ics
 
 NOW = datetime(2026, 11, 9, 14, 30, tzinfo=UTC)
@@ -152,3 +154,58 @@ def test_one_adult_is_singular() -> None:
             now=NOW,
         )
         assert word in msg.get_body(("plain",)).get_content()  # type: ignore[union-attr]
+
+
+def test_a_cancel_invite_removes_the_same_event() -> None:
+    """METHOD:CANCEL with the same UID takes the stay out of the guest's calendar."""
+    ics = booking_ics(
+        BOOKING.model_copy(update={"status": "cancelled"}),
+        organizer="reception@hotel.example",
+        attendee="ada@guest.example",
+        summary="Hotel Corte Aurelia, booking 482913",
+        location="Via della Lupa 12, Rome",
+        now=NOW,
+        method="CANCEL",
+    ).decode()
+
+    assert "METHOD:CANCEL\r\n" in ics
+    assert "STATUS:CANCELLED\r\n" in ics
+    assert "UID:booking-482913@hotel.example\r\n" in ics
+    assert "METHOD:REQUEST" not in ics
+
+
+@pytest.mark.parametrize(
+    ("language", "late", "expected", "absent"),
+    [
+        (
+            "en",
+            False,
+            ["Dear Ada", "482913", "cancelled", "Thursday 10 December 2026"],
+            "charge",
+        ),
+        ("en", True, ["Dear Ada", "cancellation policy charge may apply"], "€"),
+        ("it", False, ["Gentile Ada", "482913", "cancellata"], "penale"),
+        ("it", True, ["Gentile Ada", "penale"], "€"),
+    ],
+)
+def test_the_cancellation_email(
+    language: str, late: bool, expected: list[str], absent: str
+) -> None:
+    """It confirms the cancellation; a late one mentions the policy, no amount."""
+    msg = cancellation_message(
+        BOOKING.model_copy(update={"status": "cancelled"}),
+        to="ada@guest.example",
+        sender="reception@hotel.example",
+        language=language,  # type: ignore[arg-type]
+        now=NOW,
+        late=late,
+    )
+    body = msg.get_body(("plain",)).get_content()  # type: ignore[union-attr]
+
+    assert "482913" in msg["Subject"]
+    for text in expected:
+        assert text in body, text
+    assert absent not in body
+    (invite,) = list(msg.iter_attachments())
+    assert invite.get_param("method") == "CANCEL"
+    assert "METHOD:CANCEL" in invite.get_content()

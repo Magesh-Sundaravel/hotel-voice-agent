@@ -1,9 +1,11 @@
-"""send_confirmation_email tool: email the booking with a calendar invite.
+"""send_confirmation_email tool: email the booking as it stands, with a calendar file.
 
-The tool only checks that there is something to send, then answers. A background
-job does the rest: mark the booking (so it is sent once), read it again (so a
-modify made meanwhile is what gets mailed), build the email and send it. Any
-failure in the job clears the mark, so a later call can retry.
+A confirmed booking gets the confirmation with an invite; a cancelled one gets the
+cancellation with an update that removes the event. The tool only checks that
+there is something to send, then answers. A background job does the rest: mark
+the booking (so it is sent once), read it again (so a change made meanwhile is
+what gets mailed), build the email and send it. Any failure in the job clears the
+mark, so a later call can retry.
 """
 
 import asyncio
@@ -15,8 +17,9 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from src.db.bookings import BookingRepository
-from src.email.compose import confirmation_message
+from src.email.compose import cancellation_message, confirmation_message
 from src.email.sender import EmailSender, EmailSendError
+from src.tools.cancel_booking import is_late_cancellation
 from src.tools.stay import LAST_NAME_DESCRIPTION, REFERENCE_DESCRIPTION, clean_reference
 
 logger = logging.getLogger(__name__)
@@ -83,20 +86,28 @@ async def _deliver(
         if target is None or target.email is None:
             raise LookupError("booking or email gone since the tool answered")
         if target.booking.status == "cancelled":
-            raise LookupError("booking cancelled since the tool answered")
-        message = confirmation_message(
-            target.booking,
-            to=target.email,
-            sender=sender.address,
-            language=inp.language,
-            now=now,
-        )
+            message = cancellation_message(
+                target.booking,
+                to=target.email,
+                sender=sender.address,
+                language=inp.language,
+                now=now,
+                late=is_late_cancellation(target.booking),
+            )
+        else:
+            message = confirmation_message(
+                target.booking,
+                to=target.email,
+                sender=sender.address,
+                language=inp.language,
+                now=now,
+            )
         await sender.send(message)
     except Exception as error:  # noqa: BLE001 - a stuck claim would block the email for good
         # Text only from our own errors, which never carry PII; type for the rest.
         detail = str(error) if isinstance(error, EmailSendError | LookupError) else ""
         logger.warning(
-            "confirmation email failed for guest %s: %s %s",
+            "booking email failed for guest %s: %s %s",
             guest_id,
             type(error).__name__,
             detail,
@@ -118,7 +129,7 @@ async def send_confirmation_email(
     now: datetime,
     spawn: Spawn = run_in_background,
 ) -> SendConfirmationEmailOk | SendConfirmationEmailError:
-    """Queue the confirmation email for a booking, at most once per version of it.
+    """Queue the booking email (confirmation or cancellation), once per version.
 
     Args:
         bookings: Guest and reservation access.
@@ -128,15 +139,13 @@ async def send_confirmation_email(
         spawn: Runs the send after the tool has answered.
 
     Returns:
-        ok once the send is queued (a repeat sends nothing); otherwise not_found,
-        cancelled or no_email_on_file.
+        ok once the send is queued (a repeat sends nothing); otherwise not_found
+        or no_email_on_file.
     """
     reference = clean_reference(inp.reference)
     target = await bookings.get_confirmation_target(reference, inp.last_name)
     if target is None:
         return SendConfirmationEmailError(reason="not_found")
-    if target.booking.status == "cancelled":
-        return SendConfirmationEmailError(reason="cancelled")
     if target.email is None:
         return SendConfirmationEmailError(reason="no_email_on_file")
     # Spawning is the last step and does not await, so a tool timeout cannot

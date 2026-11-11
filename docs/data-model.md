@@ -78,7 +78,7 @@ Modify and cancel are idempotent by `reference`.
 | id | uuid pk | |
 | call_id | text unique | ElevenLabs conversation id; same value tagged on the Langfuse trace |
 | guest_id | uuid fk guests | nullable |
-| language | text | nullable; `it` or `en`, from the first tool that is given a language |
+| language | text | nullable; `it` or `en`: the language a tool was given, else the call's language as the `/llm` proxy saw it; never the `AGENT_LANGUAGE` guess |
 | started_at | timestamptz | |
 | ended_at | timestamptz | nullable |
 | outcome | text | nullable; `booked`, `modified` or `cancelled`; the latest wins |

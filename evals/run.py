@@ -126,8 +126,10 @@ async def _run_case_once(
         ),
         case.failing_tools,
     )
+    language = case.language
     with observability.call_session(call_id, case.language):
         for turn in case.turns:
+            language = turn.language or language
             try:
                 result = await run_turn(llm, registry, history, turn.caller)
             except httpx.HTTPError as error:
@@ -137,7 +139,7 @@ async def _run_case_once(
             calls: list[ToolCall] = [
                 c for m in new_messages for c in m.tool_calls or []
             ]
-            failures += score_turn(turn.expect, case.language, calls, result.reply)
+            failures += score_turn(turn.expect, language, calls, result.reply)
             history = result.history
     return failures
 

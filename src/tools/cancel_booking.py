@@ -4,7 +4,7 @@ from datetime import UTC, datetime, time, timedelta
 
 from pydantic import BaseModel, Field
 
-from src.db.bookings import BookingRepository
+from src.db.bookings import Booking, BookingRepository
 from src.tools.stay import (
     HOTEL_TZ,
     LAST_NAME_DESCRIPTION,
@@ -14,6 +14,18 @@ from src.tools.stay import (
 
 CHECK_IN_TIME = time(15, 0)
 FREE_CANCELLATION = timedelta(hours=48)
+
+
+def is_late_cancellation(booking: Booking) -> bool:
+    """Whether a cancelled booking was cancelled inside 48 hours of check-in.
+
+    Check-in is 15:00 hotel time on the arrival day. A booking that is not
+    cancelled is never late.
+    """
+    if booking.cancelled_at is None:
+        return False
+    check_in_at = datetime.combine(booking.check_in, CHECK_IN_TIME, HOTEL_TZ)
+    return booking.cancelled_at > check_in_at - FREE_CANCELLATION
 
 
 class CancelBookingInput(BaseModel):
@@ -66,8 +78,6 @@ async def cancel_booking(
     cancelled = await bookings.cancel_booking(reference, inp.last_name, now)
     if cancelled is None or cancelled.cancelled_at is None:
         return CancelBookingError(reason="not_found")
-    check_in_at = datetime.combine(cancelled.check_in, CHECK_IN_TIME, HOTEL_TZ)
     return CancelBookingOk(
-        reference=reference,
-        late_cancellation=cancelled.cancelled_at > check_in_at - FREE_CANCELLATION,
+        reference=reference, late_cancellation=is_late_cancellation(cancelled)
     )

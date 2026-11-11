@@ -28,6 +28,12 @@ from src.db.hotel import HotelRepository
 from src.email.sender import EmailSender
 from src.tools.context import CallContext
 from src.tools.stay import E164
+from src.voice.call_language import (
+    Language,
+    as_language,
+    known_language,
+    remember_language,
+)
 from src.voice.call_log import call_event
 
 WEBHOOK_TRACE_NAME = "handle-tool-webhook"
@@ -117,16 +123,23 @@ async def call_tool(
         raise HTTPException(status_code=404, detail="unknown tool")
     extra = body.model_extra or {}
     arguments = json.dumps(extra)
-    # The caller's language is not known to tools yet (docs/architecture.md).
+    # A language the model passed is the freshest; else what the /llm proxy saw.
+    # Only those reach the call log; the default is a guess, for the trace tag only.
+    spoken = as_language(extra.get("language")) if "language" in extra else None
+    if spoken:
+        remember_language(body.call_id, spoken)
+    known = known_language(body.call_id)
     with (
-        observability.call_session(body.call_id, "unknown"),
+        observability.call_session(
+            body.call_id, known or services.settings.agent_language
+        ),
         observability.turn_span(arguments, name=WEBHOOK_TRACE_NAME),
     ):
         result = await run_tool(
             registry,
             ToolCall(id=f"{body.call_id}:{name}", name=name, arguments=arguments),
         )
-    await _log_call(services.calls, body.call_id, name, extra, result)
+    await _log_call(services.calls, body.call_id, name, extra, result, known)
     return result
 
 
@@ -136,6 +149,7 @@ async def _log_call(
     name: str,
     arguments: dict[str, object],
     result: BaseModel,
+    language: Language | None,
 ) -> None:
     """Record the tool call in the call log; a failure is a warning, never an error.
 
@@ -144,7 +158,7 @@ async def _log_call(
     """
     try:
         async with asyncio.timeout(CALL_LOG_TIMEOUT_S):
-            await calls.record(call_event(call_id, name, arguments, result))
+            await calls.record(call_event(call_id, name, arguments, result, language))
     except (CallLogError, TimeoutError) as exc:
         logger.warning(
             "call log write failed for call %s after %s: %s",
