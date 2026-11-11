@@ -38,7 +38,7 @@ Why these choices: [docs/decisions/](docs/decisions/).
 - `POST /tools/{name}`: tool webhooks for ElevenLabs, authenticated with a shared secret and running the same code as the CLI and evals (`src/voice/webhooks.py`)
 - Tool configs for the ElevenLabs dashboard, exported from the registry (`src/voice/export_tools.py`)
 - Langfuse tracing of model calls, tool calls and eval runs, with PII masking (`src/observability.py`)
-- Bilingual golden eval dataset (36 cases, Italian and English) with a runner and scorer (`evals/`)
+- Bilingual golden eval dataset (38 cases, Italian and English) with a runner and scorer (`evals/`)
 - `/health` endpoint, Dockerfile, Compose file and CI for lint and tests
 
 Tool contracts are in [docs/tools.md](docs/tools.md).
@@ -111,7 +111,7 @@ docs/        architecture, tool contracts, data model, decisions, vendor notes
 - [x] Language tag (it/en) on live call traces, from ElevenLabs' language_detection calls
 - [x] Eval cases for booking and returning callers
 - [x] Eval cases for tool failure, messages and withheld caller ID
-- [ ] Eval cases for language switching
+- [x] Eval cases for language switching
 - [x] CI for lint and tests
 - [ ] Evals in CI (needs Groq and Langfuse keys)
 - [ ] AWS deployment (ECS Fargate), as a future option

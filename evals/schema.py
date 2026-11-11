@@ -31,10 +31,12 @@ class Turn(BaseModel):
 
     caller: str
     expect: TurnExpect = TurnExpect()
+    # The reply language from this turn on, when the caller switches mid-call.
+    language: Literal["it", "en"] | None = None
 
 
 class EvalCase(BaseModel):
-    """A scripted conversation. Replies must be in `language`."""
+    """A scripted conversation. Replies must be in `language` until a turn switches it."""
 
     id: str
     language: Literal["it", "en"]

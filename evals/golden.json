@@ -1168,6 +1168,82 @@
           }
         }
       ]
+    },
+    {
+      "id": "en-switch-to-italian",
+      "language": "en",
+      "tags": [
+        "language-switch"
+      ],
+      "turns": [
+        {
+          "caller": "Hi, do you have a room for two from December 10th to 12th?",
+          "expect": {
+            "tool_calls": [
+              {
+                "name": "check_availability",
+                "args": {
+                  "check_in": "2026-12-10",
+                  "check_out": "2026-12-12",
+                  "guests": 2
+                }
+              }
+            ]
+          }
+        },
+        {
+          "caller": "Scusi, preferisco parlare in italiano. Quanto costa la Superior?",
+          "language": "it",
+          "expect": {
+            "tool_calls": [
+              {
+                "name": "get_rates",
+                "args": {
+                  "room_type": "Superior"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "it-switch-to-english",
+      "language": "it",
+      "tags": [
+        "language-switch"
+      ],
+      "turns": [
+        {
+          "caller": "Buongiorno, avete una camera per due persone dal 10 al 12 dicembre?",
+          "expect": {
+            "tool_calls": [
+              {
+                "name": "check_availability",
+                "args": {
+                  "check_in": "2026-12-10",
+                  "check_out": "2026-12-12",
+                  "guests": 2
+                }
+              }
+            ]
+          }
+        },
+        {
+          "caller": "Sorry, could we continue in English? How much is the Deluxe?",
+          "language": "en",
+          "expect": {
+            "tool_calls": [
+              {
+                "name": "get_rates",
+                "args": {
+                  "room_type": "Deluxe"
+                }
+              }
+            ]
+          }
+        }
+      ]
     }
   ]
 }

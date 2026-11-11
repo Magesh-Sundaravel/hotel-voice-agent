@@ -210,3 +210,54 @@ def test_failing_tools_must_be_real_tools() -> None:
     """A typo in the dataset should fail loudly, not test nothing."""
     with pytest.raises(ValueError, match="book_spa"):
         break_tools({}, ["book_spa"])
+
+
+SWITCH = Dataset.model_validate(
+    {
+        "today": "2026-11-02",
+        "cases": [
+            {
+                "id": "en-switch-to-it",
+                "language": "en",
+                "turns": [
+                    {"caller": "Hi, do you have rooms in December?"},
+                    {
+                        "caller": "Scusi, possiamo parlare in italiano?",
+                        "language": "it",
+                    },
+                ],
+            }
+        ],
+    }
+)
+
+
+@pytest.mark.asyncio
+async def test_a_turn_can_switch_the_expected_language() -> None:
+    """After the caller switches, replies are scored in the new language."""
+    llm = ScriptedLLM(
+        [
+            AssistantMessage(content="Which dates would you like to stay?"),
+            AssistantMessage(content="Certo, per quali date desidera soggiornare?"),
+        ]
+    )
+
+    report = await run_dataset(SWITCH, llm, repeats=1)
+
+    assert report.cases[0].passed_runs == 1, report.cases[0].failures
+
+
+@pytest.mark.asyncio
+async def test_a_reply_in_the_old_language_after_a_switch_fails() -> None:
+    """Staying in English after the caller asked for Italian is a failure."""
+    llm = ScriptedLLM(
+        [
+            AssistantMessage(content="Which dates would you like to stay?"),
+            AssistantMessage(content="Sure, which dates would you like to stay?"),
+        ]
+    )
+
+    report = await run_dataset(SWITCH, llm, repeats=1)
+
+    assert report.cases[0].passed_runs == 0
+    assert "expected it" in report.cases[0].failures[0]
