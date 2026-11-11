@@ -34,7 +34,7 @@ Pydantic models in `evals/schema.py` are the schema; `tests/test_eval_schema.py`
 - `forbidden_tools` is how a case checks that the agent waits for the caller's yes: the turn that reads a booking back forbids the write, and the caller's yes turn expects it.
 - `failing_tools` tests the retry-then-follow-up-email path: the named tools raise, and the loop returns `tool_error`, as with a real outage. An unknown name fails the run.
 - Callers are scripted. There is no simulated-caller LLM.
-- Tags in use: `relative-date`, `missing-info`, `limited-availability`, `season-boundary`, `too-many-guests`, `past-date`, `booking-read`, `booking-create`, `booking-modify`, `booking-cancel`, `returning-caller`, `confirm-before-write`, `confirmation-email`, `take-message`, `handoff`, `withheld-caller-id`, `tool-failure`, `followup-email`.
+- Tags in use: `relative-date`, `missing-info`, `limited-availability`, `season-boundary`, `too-many-guests`, `past-date`, `booking-read`, `booking-create`, `booking-modify`, `booking-cancel`, `returning-caller`, `confirm-before-write`, `confirmation-email`, `take-message`, `handoff`, `withheld-caller-id`, `tool-failure`, `followup-email`, `cancellation-email`.
 - Tags planned, no case yet (they need checks the scorer does not have): `language-switch`.
 
 ## Running

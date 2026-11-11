@@ -39,7 +39,7 @@ REASONS = {
         "no_rate_for_dates",
     },
     "cancel_booking": {"not_found", "past_booking"},
-    "send_confirmation_email": {"not_found", "cancelled", "no_email_on_file"},
+    "send_confirmation_email": {"not_found", "no_email_on_file"},
     "take_message": {"contact_required", "invalid_phone", "invalid_email"},
     "send_followup_email": {"email_required", "invalid_email"},
 }

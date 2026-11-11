@@ -107,7 +107,7 @@ docs/        architecture, tool contracts, data model, decisions, vendor notes
 - [x] Booking tools: create, modify and cancel a reservation, guest lookup by caller ID
 - [x] Gmail confirmation emails with an `.ics` invite
 - [x] Follow-up email after a tool failure, and messages for reception
-- [ ] Cancellation emails
+- [x] Cancellation emails (`METHOD:CANCEL` removes the calendar event)
 - [ ] Language tag (it/en) on live call traces
 - [x] Eval cases for booking and returning callers
 - [x] Eval cases for tool failure, messages and withheld caller ID

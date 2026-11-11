@@ -129,22 +129,23 @@ Rules shared by the booking tools:
 - Output: {ok: true, reference: str, late_cancellation: bool} | {ok: false, reason: str}
 - `late_cancellation` is true when the booking was cancelled less than 48 hours before check-in. Tell the caller the cancellation policy charge may apply. Do not name an amount.
 - Reasons: not_found, past_booking (the stay has already ended)
-- Side effects: sets the reservation to cancelled, which frees the room
+- Side effects: sets the reservation to cancelled, which frees the room, and clears `confirmation_sent_at`, so send_confirmation_email sends the cancellation
 - Idempotent: yes (by reference). Cancelling an already cancelled booking returns ok with its original `late_cancellation`.
 - Typical latency: under 300 ms
 
 ## send_confirmation_email
-- Purpose: email the guest a confirmation of a booking, with a calendar invite attached.
-- Use when: create_booking or modify_booking has just succeeded. Call it straight away, without asking the caller again; the email address was settled during booking. Then say the email will arrive in a few minutes.
-- Does not: take an email address (it only sends to the one on file, which create_booking stores), send a cancellation, or report whether the email was delivered.
+- Purpose: email the guest their booking as it now stands: a confirmation with a calendar invite, or a cancellation that removes the event.
+- Use when: create_booking, modify_booking or cancel_booking has just succeeded. Call it straight away, without asking the caller again; the email address was settled during booking. Then say the email will arrive in a few minutes.
+- Does not: take an email address (it only sends to the one on file, which create_booking stores), or report whether the email was delivered.
 - Input: reference: str (6 digits), last_name: str (any case), language: "it" | "en" (the language the caller is speaking now, not the one stored on the guest)
 - Output: {ok: true} | {ok: false, reason: str}
-- Reasons: not_found (no booking with that reference and last name), cancelled (the booking is cancelled), no_email_on_file (the guest gave no email; say nothing more about email)
+- Reasons: not_found (no booking with that reference and last name), no_email_on_file (the guest gave no email; say nothing more about email)
 - The email is sent by a background job after the tool returns. The job marks the booking, reads it again (so a modify made in between is what gets mailed), builds the email and sends it. Any failure in the job is logged with `guest_id` only, is not reported to the caller, and clears the mark.
 - Content: plain text in `language`, with the reference, room type, dates and total said the way a person would, adults, check-in and check-out times, and the cancellation policy. The guest's email address never reaches the model.
 - Attachment `booking.ics`: `METHOD:REQUEST`, the hotel's Gmail address as ORGANIZER, the guest as ATTENDEE with `RSVP=FALSE`, an all-day event from check_in to check_out (exclusive). UID `booking-<reference>@<sender domain>` stays the same for the life of the booking and SEQUENCE grows with each send (the send time in Unix seconds, valid until 2038, the iCalendar INTEGER limit), so a modify updates the event in the guest's calendar.
+- Cancellation (the booking is cancelled when the job reads it): plain text in `language` with the reference, room type and dates, and either "nothing to pay" or, for a late cancellation, that the policy charge may apply (never an amount). Its `booking.ics` is `METHOD:CANCEL` with `STATUS:CANCELLED`, the same UID and a higher SEQUENCE, so the event is removed from the guest's calendar.
 - Side effects: the job sets `reservations.confirmation_sent_at`, then sends one email. If the job fails, it clears only its own mark (matched on the time it set), so a later call can retry and a newer send is never undone. The app waits up to 10 s for queued sends at shutdown.
-- Idempotent: yes (by reference). Once sent, calling again returns ok and sends nothing, until modify_booking changes the booking, which clears the mark.
+- Idempotent: yes (by reference). Once sent, calling again returns ok and sends nothing, until modify_booking or cancel_booking changes the booking, which clears the mark. A booking cancelled before cancellation emails existed keeps its old mark, so it gets no cancellation email.
 - Typical latency: under 300 ms (the send itself runs after the reply)
 
 ## take_message

@@ -302,6 +302,7 @@ class InMemoryBookingRepository(InMemoryHotelRepository):
             res.booking = res.booking.model_copy(
                 update={"status": "cancelled", "cancelled_at": now}
             )
+            res.confirmation_sent_at = None  # the cancellation email is now due
         return res.booking
 
     async def modify_booking(

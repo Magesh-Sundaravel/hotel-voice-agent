@@ -382,7 +382,8 @@
       "language": "en",
       "tags": [
         "booking-cancel",
-        "confirm-before-write"
+        "confirm-before-write",
+        "cancellation-email"
       ],
       "turns": [
         {
@@ -397,7 +398,8 @@
               }
             ],
             "forbidden_tools": [
-              "cancel_booking"
+              "cancel_booking",
+              "send_confirmation_email"
             ]
           }
         },
@@ -410,6 +412,13 @@
                 "args": {
                   "reference": "730158"
                 }
+              },
+              {
+                "name": "send_confirmation_email",
+                "args": {
+                  "reference": "730158",
+                  "language": "en"
+                }
               }
             ]
           }
@@ -421,7 +430,8 @@
       "language": "it",
       "tags": [
         "booking-cancel",
-        "confirm-before-write"
+        "confirm-before-write",
+        "cancellation-email"
       ],
       "turns": [
         {
@@ -436,7 +446,8 @@
               }
             ],
             "forbidden_tools": [
-              "cancel_booking"
+              "cancel_booking",
+              "send_confirmation_email"
             ]
           }
         },
@@ -448,6 +459,13 @@
                 "name": "cancel_booking",
                 "args": {
                   "reference": "482913"
+                }
+              },
+              {
+                "name": "send_confirmation_email",
+                "args": {
+                  "reference": "482913",
+                  "language": "it"
                 }
               }
             ]
