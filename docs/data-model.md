@@ -89,16 +89,16 @@ Modify and cancel are idempotent by `reference`.
 No transcripts and no names, phones or emails in this table. Traces go to Langfuse with masking.
 
 ## Seed hotel
-Fictional data modelled on Sina Bernini Bristol, Rome (Piazza Barberini 23, five stars). Only the public name, address and room type names are real. Everything else is invented, and phone numbers are fake.
+A fictional hotel: Hotel Corte Aurelia, Via della Lupa 12, Rome, five stars. The hotel, its address number, room types, rates, guests and bookings are all invented, and phone numbers are fake.
 
 | Room type | Rooms | max_guests |
 |---|---|---|
 | Superior | 10 | 2 |
 | Deluxe | 8 | 2 |
-| Executive Deluxe Piazza View | 5 | 3 |
+| Executive Deluxe Courtyard View | 5 | 3 |
 | Junior Suite | 4 | 3 |
 | Suite | 2 | 4 |
-| Barberini Penthouse Suite | 1 | 4 |
+| Aurelia Penthouse Suite | 1 | 4 |
 
 30 rooms in total. Rates are invented per night in EUR for the low and high seasons, rising with room type.
 

@@ -158,7 +158,7 @@ async def test_a_tool_gets_its_arguments_from_the_body(
     assert body["ok"] is True
     assert {o["room_type"] for o in body["options"]} == {
         "Suite",
-        "Barberini Penthouse Suite",
+        "Aurelia Penthouse Suite",
     }
 
 

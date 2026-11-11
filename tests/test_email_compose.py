@@ -12,7 +12,7 @@ BOOKING = Booking(
     reference="482913",
     status="confirmed",
     first_name="Ada",
-    room_type="Executive Deluxe Piazza View",
+    room_type="Executive Deluxe Courtyard View",
     check_in=date(2026, 12, 10),
     check_out=date(2026, 12, 12),
     adults=2,
@@ -25,8 +25,8 @@ def _ics() -> str:
         BOOKING,
         organizer="reception@hotel.example",
         attendee="ada@guest.example",
-        summary="Sina Bernini Bristol, booking 482913; Executive Deluxe Piazza View",
-        location="Piazza Barberini 23, Rome",
+        summary="Hotel Corte Aurelia, booking 482913; Executive Deluxe Courtyard View",
+        location="Via della Lupa 12, Rome",
         now=NOW,
     ).decode()
 
@@ -55,7 +55,7 @@ def test_ics_lines_end_in_crlf_are_folded_and_escaped() -> None:
     assert all(len(line.encode()) <= 75 for line in lines)
     unfolded = ics.replace("\r\n ", "")
     assert (
-        "SUMMARY:Sina Bernini Bristol\\, booking 482913\\; Executive Deluxe Piazza "
+        "SUMMARY:Hotel Corte Aurelia\\, booking 482913\\; Executive Deluxe Courtyard "
         "View\r\n" in unfolded
     )
 
@@ -93,7 +93,7 @@ def test_english_email_lists_the_booking() -> None:
     for text in [
         "Dear Ada",
         "482913",
-        "Executive Deluxe Piazza View",
+        "Executive Deluxe Courtyard View",
         "Thursday 10 December 2026",
         "Saturday 12 December 2026",
         "15:00",
