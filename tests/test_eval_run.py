@@ -5,9 +5,13 @@ import re
 import httpx
 import pytest
 
-from evals.run import Report, run_dataset, select_cases
+from evals.run import Report, break_tools, run_dataset, select_cases
 from evals.schema import Dataset
 from src.agent.llm import AssistantMessage, ToolCall
+from src.agent.loop import run_tool
+from src.agent.registry import build_registry
+from src.db.seed import seed_repository
+from src.tools.context import CallContext
 from tests.test_loop import ScriptedLLM
 
 AVAILABILITY_CALL = ToolCall(
@@ -174,3 +178,35 @@ def test_an_unknown_id_or_empty_tag_match_is_an_error() -> None:
         select_cases(_tagged(), ["nope"], [])
     with pytest.raises(ValueError, match="no case has any of the tags: zzz"):
         select_cases(_tagged(), [], ["zzz"])
+
+
+@pytest.mark.asyncio
+async def test_a_case_can_make_a_tool_fail() -> None:
+    """failing_tools lets a case test the retry-then-email path."""
+    repo = seed_repository()
+    registry = break_tools(
+        build_registry(repo, repo, CallContext(call_id="eval-fail")),
+        ["check_availability"],
+    )
+
+    first = await run_tool(registry, AVAILABILITY_CALL)
+    again = await run_tool(registry, AVAILABILITY_CALL)
+    rates = await run_tool(
+        registry,
+        ToolCall(
+            id="c2",
+            name="get_rates",
+            arguments='{"room_type": "Suite", "check_in": "2026-12-10",'
+            ' "check_out": "2026-12-12"}',
+        ),
+    )
+
+    assert first.model_dump() == {"ok": False, "reason": "tool_error"}
+    assert again.model_dump() == {"ok": False, "reason": "tool_error"}
+    assert rates.model_dump()["ok"] is True
+
+
+def test_failing_tools_must_be_real_tools() -> None:
+    """A typo in the dataset should fail loudly, not test nothing."""
+    with pytest.raises(ValueError, match="book_spa"):
+        break_tools({}, ["book_spa"])

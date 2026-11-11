@@ -11,8 +11,8 @@ from src.db.hotel import HotelRepository
 from src.tools.get_rates import GetRatesError, GetRatesInput, get_rates
 
 HOTEL_TZ = ZoneInfo("Europe/Rome")
-E164 = re.compile(r"^\+[1-9]\d{6,14}$")
-EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+E164 = re.compile(r"^\+[1-9]\d{6,14}\Z")
+EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+\Z")
 
 REFERENCE_DESCRIPTION = (
     "The 6-digit booking reference the guest was given, for example 482913. "

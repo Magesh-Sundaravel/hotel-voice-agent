@@ -81,9 +81,9 @@ Modify and cancel are idempotent by `reference`.
 | language | text | nullable; `it` or `en`, from the first tool that is given a language |
 | started_at | timestamptz | |
 | ended_at | timestamptz | nullable |
-| outcome | text | nullable; `booked`, `modified`, `cancelled`, `message` (take_message) or `followup` (send_followup_email); the latest wins |
-| needs_followup | bool | a follow-up email was or should have been sent |
-| followup_reason | text | nullable; no PII |
+| outcome | text | nullable; `booked`, `modified` or `cancelled`; the latest wins |
+| needs_followup | bool | reception has something to do: a message (take_message) or a follow-up email to answer (send_followup_email) |
+| followup_reason | text | nullable; `message` or `tool_failure:<topic>`; no PII |
 | reservation_id | uuid fk reservations | nullable |
 
 Written by the tool webhook (`src/voice/call_log.py`, `src/db/calls.py`): the first tool call in a call creates the row, later ones fill it in. A field left unset keeps its value, the latest outcome wins, and `needs_followup` once set stays set. `guest_id` comes from the reservation the call touched. A call that never uses a tool has no row. `ended_at` is not written yet (it needs ElevenLabs' post-call webhook).

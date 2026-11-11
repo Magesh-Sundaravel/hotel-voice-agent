@@ -365,3 +365,42 @@ async def test_the_call_log_never_breaks_a_call(
     assert "call log" in caplog.text
     assert "conv-1" in caplog.text
     assert "Rossi" not in caplog.text and GIULIA_PHONE not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_a_message_flags_the_call_for_reception(
+    client: httpx.AsyncClient, services: Services
+) -> None:
+    """take_message leaves the outcome alone and sets needs_followup."""
+    response = await client.post(
+        "/tools/take_message",
+        json=_body(
+            first_name="Giulia",
+            last_name="Rossi",
+            message="Vorrebbe parlare con il direttore.",
+            language="it",
+        ),
+        headers=HEADERS,
+    )
+
+    assert response.json() == {"ok": True}
+    entry = await services.calls.get("conv-1")
+    assert entry is not None
+    assert (entry.needs_followup, entry.followup_reason) == (True, "message")
+    assert entry.language == "it" and entry.outcome is None
+
+
+@pytest.mark.asyncio
+async def test_a_followup_email_flags_the_call_with_its_topic(
+    client: httpx.AsyncClient, services: Services
+) -> None:
+    """The reason says what the caller could not finish; no PII."""
+    await client.post(
+        "/tools/send_followup_email",
+        json=_body(call_id="conv-fu", topic="change", language="en"),
+        headers=HEADERS,
+    )
+
+    entry = await services.calls.get("conv-fu")
+    assert entry is not None
+    assert entry.followup_reason == "tool_failure:change"

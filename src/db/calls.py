@@ -8,7 +8,7 @@ from typing import Literal, Protocol
 
 from pydantic import BaseModel
 
-Outcome = Literal["booked", "modified", "cancelled", "message", "followup"]
+Outcome = Literal["booked", "modified", "cancelled"]
 
 
 class CallLogError(Exception):

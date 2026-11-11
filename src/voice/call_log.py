@@ -18,7 +18,8 @@ def call_event(
     """Turn one tool call into a call log event.
 
     Every call opens the entry; a successful booking write sets the outcome and the
-    booking. The language is taken from any tool that was given one.
+    booking, and a message or follow-up email flags the call for staff. The
+    language is taken from any tool that was given one.
 
     Args:
         call_id: The ElevenLabs conversation id.
@@ -39,4 +40,10 @@ def call_event(
     if tool in _OUTCOMES:
         event.outcome = _OUTCOMES[tool]
         event.reference = getattr(result, "reference", None)
+    elif tool == "take_message":
+        event.needs_followup = True
+        event.followup_reason = "message"
+    elif tool == "send_followup_email":
+        event.needs_followup = True
+        event.followup_reason = f"tool_failure:{arguments.get('topic')}"
     return event

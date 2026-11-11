@@ -12,6 +12,7 @@ from src.db.bookings import (
     BookingChange,
     BookingConflict,
     ConfirmationTarget,
+    GuestContact,
     GuestSummary,
     NewBooking,
     new_reference,
@@ -237,6 +238,15 @@ class PostgresBookingRepository:
             phone,
         )
         return GuestSummary(**dict(row)) if row else None
+
+    async def find_guest_contact(self, phone: str) -> GuestContact | None:
+        """Find the id, first name and email of the guest with this phone (E.164)."""
+        row = await self._db.fetchrow(
+            "select id::text as guest_id, first_name, email from guests"
+            " where phone = $1",
+            phone,
+        )
+        return GuestContact(**dict(row)) if row else None
 
     async def get_booking(self, reference: str, last_name: str) -> Booking | None:
         """Find a booking by reference and the guest's last name, any case."""
