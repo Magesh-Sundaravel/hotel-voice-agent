@@ -119,7 +119,7 @@ def reply_failures(reply: str) -> list[str]:
 def test_clean_spoken_reply_passes() -> None:
     """Two short sentences with room names and spoken prices are fine."""
     reply = (
-        "We have the Superior and the Barberini Penthouse Suite free. "
+        "We have the Superior and the Aurelia Penthouse Suite free. "
         "The Superior is two hundred and twenty euros a night."
     )
     assert reply_failures(reply) == []
@@ -145,10 +145,10 @@ def test_reply_rule_violations_are_reported(reply: str, keyword: str) -> None:
 
 ITALIAN_SLIP = (
     "Abbiamo diverse camere libere per domani notte, dalla Superior alla "
-    "Barberini Penthouse Suite. Quale tipologia di camera le interessa?"
+    "Aurelia Penthouse Suite. Quale tipologia di camera le interessa?"
 )
 ENGLISH_WITH_ITALIAN_NAMES = (
-    "We have the Superior and the Executive Deluxe Piazza View free. "
+    "We have the Superior and the Executive Deluxe Courtyard View free. "
     "Which type would you like?"
 )
 

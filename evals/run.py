@@ -72,6 +72,39 @@ def spec_registry(today: date) -> dict[str, Tool]:
     return build_registry(repo, repo, CallContext(call_id="specs"), today)
 
 
+class SimulatedToolFailure(RuntimeError):
+    """Raised by a tool an eval case lists in failing_tools."""
+
+
+def break_tools(registry: dict[str, Tool], names: list[str]) -> dict[str, Tool]:
+    """Make the named tools fail on every call, as a broken backend would.
+
+    The loop turns the error into `tool_error`, exactly what the agent sees when a
+    tool really breaks.
+
+    Args:
+        registry: The case's registry.
+        names: Tools to break.
+
+    Returns:
+        A registry with those tools' handlers replaced.
+
+    Raises:
+        ValueError: A name is not a tool in the registry.
+    """
+    unknown = sorted(set(names) - set(registry))
+    if unknown:
+        raise ValueError(f"failing_tools names unknown tools: {unknown}")
+
+    async def broken(_: BaseModel) -> BaseModel:
+        raise SimulatedToolFailure("simulated by the eval case")
+
+    return {
+        name: tool.model_copy(update={"handler": broken}) if name in names else tool
+        for name, tool in registry.items()
+    }
+
+
 async def _run_case_once(
     case: EvalCase, llm: LLMClient, today: date, system_prompt: str
 ) -> list[str]:
@@ -84,11 +117,19 @@ async def _run_case_once(
     failures: list[str] = []
     call_id = f"eval-{case.id}-{uuid.uuid4().hex[:6]}"
     repo = seed_repository()
-    registry = build_registry(
-        repo, repo, CallContext(call_id=call_id, caller_phone=case.caller_phone), today
+    registry = break_tools(
+        build_registry(
+            repo,
+            repo,
+            CallContext(call_id=call_id, caller_phone=case.caller_phone),
+            today,
+        ),
+        case.failing_tools,
     )
+    language = case.language
     with observability.call_session(call_id, case.language):
         for turn in case.turns:
+            language = turn.language or language
             try:
                 result = await run_turn(llm, registry, history, turn.caller)
             except httpx.HTTPError as error:
@@ -98,7 +139,7 @@ async def _run_case_once(
             calls: list[ToolCall] = [
                 c for m in new_messages for c in m.tool_calls or []
             ]
-            failures += score_turn(turn.expect, case.language, calls, result.reply)
+            failures += score_turn(turn.expect, language, calls, result.reply)
             history = result.history
     return failures
 

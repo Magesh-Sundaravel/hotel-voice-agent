@@ -56,15 +56,21 @@ The caller ID (E.164) arrives as the `system__caller_id` dynamic variable and is
 - No match or withheld number: ask the name. A guest row is created only when a booking is made. A bare call stores nothing.
 
 ## Tool failure
-Tools return `{ok: false, reason}`. The agent never promises a callback. After one retry it says it will send an email so the guest can write down what they need.
-- Email on file: send the follow-up email to it.
+Tools return `{ok: false, reason}`. The agent never promises a callback. After one retry it offers an email so the guest can write down what they need, and calls `send_followup_email` if they agree.
+- Email on file: the follow-up email goes to it.
 - No email on file: ask the caller to spell it and read it back once. If they decline or it fails, apologise and ask them to call again.
 - `call_log` records `needs_followup` and `followup_reason`. No PII in the log.
 
+## Handoff to a person
+The agent cannot transfer a call. When the caller asks for a person, or wants something no tool does, it takes a message with `take_message`: name, a short summary and a way to reach them (the caller ID, or a phone or email they give). The message is emailed to the hotel's own inbox (`GMAIL_SENDER`), with the caller's email as Reply-To. The agent says the message was passed to reception, without saying when or how they will reply.
+
+## Call log
+Every tool webhook also writes the call's `call_log` row, keyed by `call_id` (see data-model.md). It records the outcome (booked, modified, cancelled), the reservation, the language once a tool is given one, and whether staff need to follow up. Like tracing, it never breaks a call.
+
 ## Gmail
-- Send (built): `send_confirmation_email` after create_booking and after modify_booking, to the email on file, in the language of the call. The tool answers at once and the email goes out in the background; the agent says it will arrive in a few minutes. `reservations.confirmation_sent_at` stops a second send; modify clears it.
+- Send (built): `send_confirmation_email` after create_booking, modify_booking and cancel_booking, to the email on file, in the language of the call. The tool answers at once and the email goes out in the background; the agent says it will arrive in a few minutes. `reservations.confirmation_sent_at` stops a second send; modify and cancel clear it. A cancelled booking gets a cancellation with a `METHOD:CANCEL` update (same UID).
 - The `.ics` is an iTIP `METHOD:REQUEST` (hotel as ORGANIZER, guest as ATTENDEE with `RSVP=FALSE`) with a stable UID per booking and a growing SEQUENCE, so a modified booking updates the same calendar event. Gmail may still show RSVP buttons (to check on the first real email). See docs/external/gmail.md.
-- Send (planned): cancellation (`METHOD:CANCEL`, same UID) and failure follow-ups.
+- Send (built): `send_followup_email` to the caller after a tool keeps failing, and `take_message` to the hotel's own inbox. Both send in the background, at most once per call (in memory, so only within one running server).
 - Read (planned): only on demand, via `check_guest_email`. When a caller says they replied to our email, the tool searches the hotel inbox for recent messages from that guest's address and the agent summarises them in a sentence or two.
 - No polling, no auto-replies, no email content in logs or traces.
 
@@ -78,5 +84,6 @@ To settle on the first real call (see docs/setup-elevenlabs-telnyx.md):
 - Which `/llm` path ElevenLabs calls (the proxy logs it).
 - Whether a dynamic-variable header resolves `system__conversation_id` on the custom LLM (`X-Call-Id`); if not, LLM traces land in session "unknown".
 - What ElevenLabs puts in its own system message, now placed after ours.
-- Language tag: traces from webhooks and `/llm` are tagged `lang:unknown`, because no ElevenLabs variable gives the caller's language. Candidate: read it from the language_detection tool call the proxy sees.
+- Whether Gmail and Google Calendar remove the event when the cancellation's `METHOD:CANCEL` update arrives (docs/external/gmail.md marks it UNVERIFIED); check on the first real cancellation.
+- Language tag: no ElevenLabs variable gives the caller's language, so the `/llm` proxy reads it from the latest `language_detection` call in the conversation, else uses `AGENT_LANGUAGE` (the agent's default language, `en` as in docs/setup-elevenlabs-telnyx.md), and remembers it per call_id for the tool webhooks (`src/voice/call_language.py`). This needs `X-Call-Id` to resolve (above); without it, traces get `AGENT_LANGUAGE`. Unverified: the name and argument format ElevenLabs uses for `language_detection` in the messages it sends; `it`, `it-IT` and `Italian` are all accepted.
 (Eval format and scoring are tracked in docs/evals.md.)

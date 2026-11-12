@@ -12,11 +12,13 @@ from src.db.bookings import (
     BookingChange,
     BookingConflict,
     ConfirmationTarget,
+    GuestContact,
     GuestSummary,
     NewBooking,
     new_reference,
     same_name,
 )
+from src.db.calls import CallEvent, CallLogEntry, CallLogError
 from src.db.hotel import Rate, RoomType
 
 
@@ -237,6 +239,15 @@ class PostgresBookingRepository:
         )
         return GuestSummary(**dict(row)) if row else None
 
+    async def find_guest_contact(self, phone: str) -> GuestContact | None:
+        """Find the id, first name and email of the guest with this phone (E.164)."""
+        row = await self._db.fetchrow(
+            "select id::text as guest_id, first_name, email from guests"
+            " where phone = $1",
+            phone,
+        )
+        return GuestContact(**dict(row)) if row else None
+
     async def get_booking(self, reference: str, last_name: str) -> Booking | None:
         """Find a booking by reference and the guest's last name, any case."""
         row = await self._db.fetchrow(
@@ -308,7 +319,9 @@ class PostgresBookingRepository:
         """Cancel a booking at `now`; an already cancelled one is returned unchanged."""
         async with _transaction(self._db) as conn:
             await conn.execute(
-                "update reservations res set status = 'cancelled', cancelled_at = $3"
+                # Clearing the mark makes the cancellation email due.
+                "update reservations res set status = 'cancelled', cancelled_at = $3,"
+                " confirmation_sent_at = null"
                 " from guests g where g.id = res.guest_id and res.reference = $1"
                 " and lower(g.last_name) = lower(trim($2)) and res.status = 'confirmed'",
                 reference,
@@ -371,3 +384,57 @@ class PostgresBookingRepository:
             _BOOKING_SELECT + " where res.reference = $1", reference
         )
         return Booking(**dict(row))
+
+
+class PostgresCallLogRepository:
+    """The call log in Postgres: one upserted row per call_id."""
+
+    def __init__(self, db: asyncpg.Pool | asyncpg.Connection) -> None:
+        """Store the pool or connection to query."""
+        self._db = db
+
+    async def record(self, event: CallEvent) -> None:
+        """Create or merge the call's entry (see CallLogRepository.record).
+
+        The booking reference is stored as its reservation and that reservation's
+        guest, so the row holds ids only.
+
+        Raises:
+            CallLogError: The database refused the write or could not be reached.
+        """
+        try:
+            await self._db.execute(
+                "insert into call_log (call_id, language, outcome, needs_followup,"
+                " followup_reason, reservation_id, guest_id)"
+                " select $1, $2, $3, $4, $5, res.id, res.guest_id"
+                " from (select 1) as one"
+                " left join reservations res on res.reference = $6"
+                " on conflict (call_id) do update set"
+                " language = coalesce(excluded.language, call_log.language),"
+                " outcome = coalesce(excluded.outcome, call_log.outcome),"
+                " needs_followup = call_log.needs_followup or excluded.needs_followup,"
+                " followup_reason ="
+                " coalesce(excluded.followup_reason, call_log.followup_reason),"
+                " reservation_id ="
+                " coalesce(excluded.reservation_id, call_log.reservation_id),"
+                " guest_id = coalesce(excluded.guest_id, call_log.guest_id)",
+                event.call_id,
+                event.language,
+                event.outcome,
+                event.needs_followup,
+                event.followup_reason,
+                event.reference,
+            )
+        except (asyncpg.PostgresError, asyncpg.InterfaceError, OSError) as exc:
+            raise CallLogError(type(exc).__name__) from exc
+
+    async def get(self, call_id: str) -> CallLogEntry | None:
+        """Return the call's entry, or None."""
+        row = await self._db.fetchrow(
+            "select c.call_id, c.language, c.outcome, res.reference,"
+            " c.needs_followup, c.followup_reason"
+            " from call_log c left join reservations res on res.id = c.reservation_id"
+            " where c.call_id = $1",
+            call_id,
+        )
+        return CallLogEntry(**dict(row)) if row else None

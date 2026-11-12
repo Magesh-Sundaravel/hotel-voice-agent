@@ -39,7 +39,9 @@ REASONS = {
         "no_rate_for_dates",
     },
     "cancel_booking": {"not_found", "past_booking"},
-    "send_confirmation_email": {"not_found", "cancelled", "no_email_on_file"},
+    "send_confirmation_email": {"not_found", "no_email_on_file"},
+    "take_message": {"contact_required", "invalid_phone", "invalid_email"},
+    "send_followup_email": {"email_required", "invalid_email"},
 }
 
 
@@ -90,3 +92,9 @@ def test_each_tool_points_at_the_other_for_what_it_does_not_do(
     """Prices live in get_rates and availability in check_availability."""
     assert "get_rates" in specs["check_availability"]["description"]
     assert "check_availability" in specs["get_rates"]["description"]
+
+
+def test_the_handoff_tools_point_at_each_other(specs: dict[str, dict]) -> None:  # type: ignore[type-arg]
+    """A message for staff and an email to the caller are easy to mix up."""
+    assert "send_followup_email" in specs["take_message"]["description"]
+    assert "take_message" in specs["send_followup_email"]["description"]

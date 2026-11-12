@@ -129,20 +129,47 @@ Rules shared by the booking tools:
 - Output: {ok: true, reference: str, late_cancellation: bool} | {ok: false, reason: str}
 - `late_cancellation` is true when the booking was cancelled less than 48 hours before check-in. Tell the caller the cancellation policy charge may apply. Do not name an amount.
 - Reasons: not_found, past_booking (the stay has already ended)
-- Side effects: sets the reservation to cancelled, which frees the room
+- Side effects: sets the reservation to cancelled, which frees the room, and clears `confirmation_sent_at`, so send_confirmation_email sends the cancellation
 - Idempotent: yes (by reference). Cancelling an already cancelled booking returns ok with its original `late_cancellation`.
 - Typical latency: under 300 ms
 
 ## send_confirmation_email
-- Purpose: email the guest a confirmation of a booking, with a calendar invite attached.
-- Use when: create_booking or modify_booking has just succeeded. Call it straight away, without asking the caller again; the email address was settled during booking. Then say the email will arrive in a few minutes.
-- Does not: take an email address (it only sends to the one on file, which create_booking stores), send a cancellation, or report whether the email was delivered.
+- Purpose: email the guest their booking as it now stands: a confirmation with a calendar invite, or a cancellation that removes the event.
+- Use when: create_booking, modify_booking or cancel_booking has just succeeded. Call it straight away, without asking the caller again; the email address was settled during booking. Then say the email will arrive in a few minutes.
+- Does not: take an email address (it only sends to the one on file, which create_booking stores), or report whether the email was delivered.
 - Input: reference: str (6 digits), last_name: str (any case), language: "it" | "en" (the language the caller is speaking now, not the one stored on the guest)
 - Output: {ok: true} | {ok: false, reason: str}
-- Reasons: not_found (no booking with that reference and last name), cancelled (the booking is cancelled), no_email_on_file (the guest gave no email; say nothing more about email)
+- Reasons: not_found (no booking with that reference and last name), no_email_on_file (the guest gave no email; say nothing more about email)
 - The email is sent by a background job after the tool returns. The job marks the booking, reads it again (so a modify made in between is what gets mailed), builds the email and sends it. Any failure in the job is logged with `guest_id` only, is not reported to the caller, and clears the mark.
 - Content: plain text in `language`, with the reference, room type, dates and total said the way a person would, adults, check-in and check-out times, and the cancellation policy. The guest's email address never reaches the model.
 - Attachment `booking.ics`: `METHOD:REQUEST`, the hotel's Gmail address as ORGANIZER, the guest as ATTENDEE with `RSVP=FALSE`, an all-day event from check_in to check_out (exclusive). UID `booking-<reference>@<sender domain>` stays the same for the life of the booking and SEQUENCE grows with each send (the send time in Unix seconds, valid until 2038, the iCalendar INTEGER limit), so a modify updates the event in the guest's calendar.
+- Cancellation (the booking is cancelled when the job reads it): plain text in `language` with the reference, room type and dates, and either "nothing to pay" or, for a late cancellation, that the policy charge may apply (never an amount). Its `booking.ics` is `METHOD:CANCEL` with `STATUS:CANCELLED`, the same UID and a higher SEQUENCE, so the event is removed from the guest's calendar.
 - Side effects: the job sets `reservations.confirmation_sent_at`, then sends one email. If the job fails, it clears only its own mark (matched on the time it set), so a later call can retry and a newer send is never undone. The app waits up to 10 s for queued sends at shutdown.
-- Idempotent: yes (by reference). Once sent, calling again returns ok and sends nothing, until modify_booking changes the booking, which clears the mark.
+- Idempotent: yes (by reference). Once sent, calling again returns ok and sends nothing, until modify_booking or cancel_booking changes the booking, which clears the mark. A booking cancelled before cancellation emails existed keeps its old mark, so it gets no cancellation email.
 - Typical latency: under 300 ms (the send itself runs after the reply)
+
+## take_message
+- Purpose: pass a message from the caller to the hotel's reception team. This is the handoff to a person: the agent never transfers the call.
+- Use when: the caller asks for a person, a manager or a department, or wants something no other tool does (a special request, a complaint, a question the agent cannot answer). Get the caller's name and the message first. Then say the message has been passed to reception. Do not say when or how reception will reply: the agent never promises a callback.
+- Does not: book, change or cancel anything, or email the caller.
+- Input: first_name: str, last_name: str, message: str (the agent's short summary of what the caller wants, in the caller's language, 1 to 1000 characters), language: "it" | "en", email: str | null (optional), phone: str | null (E164; only when the caller ID is withheld or the caller wants to be reached on another number)
+- The contact is `phone` if given, otherwise the caller ID, plus `email` if given. At least one of the two is required.
+- Output: {ok: true} | {ok: false, reason: str}
+- Reasons: contact_required (no caller ID, no phone and no email; ask for a phone number or an email), invalid_phone (not in international format; ask again), invalid_email (not a valid address; spell it back again)
+- The message is emailed to the hotel's own inbox (`GMAIL_SENDER`) by a background job after the tool answers. A failure in the job is logged with the call_id only.
+- Side effects: one email to the hotel; the call log gets `needs_followup` and `followup_reason = "message"`.
+- Idempotent: yes, within one running server (key: call_id + message). A retried call sends nothing more, unless the earlier send failed: a failed send releases its key so a retry can send.
+- Typical latency: under 50 ms (the send runs after the reply)
+
+## send_followup_email
+- Purpose: when a tool keeps failing, email the caller so they can write down what they need and reception can finish it by email.
+- Use when: a tool has failed (tool_error or tool_timeout, or any failure that is not the caller's to fix), the agent has tried once more and it failed again. Offer the email first and call this only if the caller agrees.
+- Does not: retry the failed tool, book anything, or say what went wrong. It does not take a message for staff (use take_message).
+- Input: topic: "booking" | "change" | "cancellation" | "information" (what the caller was trying to do), language: "it" | "en", email: str | null (optional; spelled back once; without it the email on file for the caller ID is used)
+- Output: {ok: true} | {ok: false, reason: str}
+- Reasons: email_required (no email was given and none is on file for the caller ID; ask the caller to spell one), invalid_email (not a valid address; spell it back again)
+- Content: plain text in `language`: an apology that the request could not be finished on the phone, what it was about, and an invitation to reply with the details. It promises that reception will handle the reply, never a callback. The guest's stored email never reaches the model.
+- The email is sent by a background job after the tool answers. A failure in the job is logged with the call_id only.
+- Side effects: one email to the caller; the call log gets `needs_followup` and `followup_reason = "tool_failure:<topic>"`.
+- Idempotent: yes, within one running server (key: call_id + address, any case). A second call to the same address sends nothing more; a corrected address gets its own email. A failed send releases its key so a retry can send.
+- Typical latency: under 300 ms (one guest lookup; the send runs after the reply)

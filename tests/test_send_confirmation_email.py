@@ -188,16 +188,39 @@ async def test_a_wrong_name_or_reference_is_not_found(wrong: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_cancelled_booking_gets_no_confirmation() -> None:
-    """Confirming a cancelled stay would mislead the guest."""
+async def test_a_cancelled_booking_gets_a_cancellation_email() -> None:
+    """After cancel_booking, the same tool tells the guest and cancels the invite."""
     repo, reference = await _hotel()
+    sender, background = FakeEmailSender(), Background()
+    await send_confirmation_email(repo, sender, _inp(reference), NOW, background)
+    await background.run()
     await repo.cancel_booking(reference, "Bianchi", NOW)
 
     result = await send_confirmation_email(
-        repo, FakeEmailSender(), _inp(reference), NOW, Background()
+        repo, sender, _inp(reference), NOW, background
     )
+    await background.run()
 
-    assert result == SendConfirmationEmailError(reason="cancelled")
+    assert result == SendConfirmationEmailOk()
+    _confirmation, cancellation = sender.sent
+    assert "cancelled" in cancellation["Subject"].lower()
+    (invite,) = list(cancellation.iter_attachments())
+    assert invite.get_param("method") == "CANCEL"
+
+
+@pytest.mark.asyncio
+async def test_a_late_cancellation_email_mentions_the_policy() -> None:
+    """Under 48 hours before check-in the policy charge may apply."""
+    repo, reference = await _hotel()  # check-in 20 December 2026
+    late = datetime(2026, 12, 19, 18, 0, tzinfo=UTC)
+    await repo.cancel_booking(reference, "Bianchi", late)
+    sender, background = FakeEmailSender(), Background()
+
+    await send_confirmation_email(repo, sender, _inp(reference), late, background)
+    await background.run()
+
+    body = sender.sent[0].get_body(("plain",)).get_content()  # type: ignore[union-attr]
+    assert "cancellation policy charge may apply" in body
 
 
 @pytest.mark.asyncio

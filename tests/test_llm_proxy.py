@@ -12,6 +12,7 @@ import pytest_asyncio
 from src import observability
 from src.agent.llm import GROQ_CHAT_URL
 from src.config import Settings
+from src.db.calls import InMemoryCallLogRepository
 from src.db.seed import seed_repository
 from src.email.sender import FakeEmailSender
 from src.main import app
@@ -62,6 +63,7 @@ async def groq() -> AsyncIterator[FakeGroq]:
     services = Services(
         hotel=repo,
         bookings=repo,
+        calls=InMemoryCallLogRepository(),
         sender=FakeEmailSender(),
         settings=Settings(webhook_secret=SECRET, groq_api_key="gk", groq_model="gm"),
         http=httpx.AsyncClient(transport=httpx.MockTransport(fake)),
@@ -184,3 +186,69 @@ async def test_a_broken_tracer_does_not_break_the_reply(
     response = await _post("/llm/v1/chat/completions")
 
     assert response.text == SSE
+
+
+def _capture_tags(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
+    monkeypatch.setattr(observability, "_get_client", lambda: FakeClient())
+    propagated: list[dict[str, Any]] = []
+
+    @contextmanager
+    def fake_propagate(**kwargs: Any) -> Iterator[None]:
+        propagated.append(kwargs)
+        yield
+
+    monkeypatch.setattr(observability, "propagate_attributes", fake_propagate)
+    return propagated
+
+
+@pytest.mark.asyncio
+async def test_the_trace_has_the_agents_language_until_a_switch(
+    groq: FakeGroq, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No language_detection call yet: the agent's default language (en)."""
+    propagated = _capture_tags(monkeypatch)
+
+    await _post("/llm/v1/chat/completions", {**HEADERS, "X-Call-Id": "conv-lang-1"})
+
+    assert propagated[0]["tags"] == ["lang:en"]
+
+
+@pytest.mark.asyncio
+async def test_a_language_switch_tags_this_and_later_traces(
+    groq: FakeGroq, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """After language_detection(it), the call is Italian, tool webhooks included."""
+    propagated = _capture_tags(monkeypatch)
+    switched = {
+        **ELEVENLABS_BODY,
+        "messages": [
+            *ELEVENLABS_BODY["messages"],
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "t1",
+                        "type": "function",
+                        "function": {
+                            "name": "language_detection",
+                            "arguments": '{"language": "it", "reason": "Italian"}',
+                        },
+                    }
+                ],
+            },
+            {"role": "tool", "tool_call_id": "t1", "content": "ok"},
+            {"role": "user", "content": "Do you have a room?"},
+        ],
+    }
+    headers = {**HEADERS, "X-Call-Id": "conv-lang-2"}
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+        await c.post("/llm/v1/chat/completions", json=switched, headers=headers)
+        await c.post(
+            "/tools/get_guest_info",
+            json={"call_id": "conv-lang-2", "caller_phone": None},
+            headers=headers,
+        )
+
+    assert [p["tags"] for p in propagated] == [["lang:it"], ["lang:it"]]

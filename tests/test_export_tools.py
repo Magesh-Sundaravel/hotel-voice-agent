@@ -24,6 +24,8 @@ def test_every_registry_tool_is_exported_as_a_webhook() -> None:
         "modify_booking",
         "cancel_booking",
         "send_confirmation_email",
+        "take_message",
+        "send_followup_email",
     }
     for name, tool in tools.items():
         api = tool["api_schema"]

@@ -15,25 +15,27 @@ Pydantic models in `evals/schema.py` are the schema; `tests/test_eval_schema.py`
 { "today": "2026-11-02",            // injected into the system prompt and the tools
   "cases": [ {
     "id": "it-relative-date",       // unique; becomes the Langfuse dataset item id
-    "language": "it",               // "it" | "en": every reply must be in this language
+    "language": "it",               // "it" | "en": the reply language until a turn switches it
     "tags": ["relative-date"],      // free-form, for slicing results
     "turns": [ {                    // scripted caller lines, at least one
       "caller": "Avete una camera per domani sera?",
+      "language": null,             // optional "it" | "en": the caller switched; replies from this turn on use it
       "expect": {
         "tool_calls": [ {"name": "check_availability", "args": {"guests": 2}} ],
         "must_not_call_tools": false,
         "exclusive": false,
         "forbidden_tools": ["create_booking"]   // must not be called this turn
       } } ],
-    "caller_phone": "+12025550101" } ] }  // optional caller ID; absent = withheld
+    "caller_phone": "+12025550101",  // optional caller ID; absent = withheld
+    "failing_tools": [] } ] }         // optional; these tools fail with tool_error on every call
 ```
 
 - Cases run against the seed repository (`src/db/seed.py`), so tool results are fixed. Every run of a case gets a fresh copy, so a booking made in one run never leaks into another.
 - The seed bookings have fixed references: 482913 (Giulia Rossi, Penthouse, 24 to 28 December 2026), 615204 (James Carter, Suite) and 730158 (Marco Bianchi, Suite), both 30 December to 3 January. Seed guest phones are +12025550101 to 0103.
 - `forbidden_tools` is how a case checks that the agent waits for the caller's yes: the turn that reads a booking back forbids the write, and the caller's yes turn expects it.
+- `failing_tools` tests the retry-then-follow-up-email path: the named tools raise, and the loop returns `tool_error`, as with a real outage. An unknown name fails the run.
 - Callers are scripted. There is no simulated-caller LLM.
-- Tags in use: `relative-date`, `missing-info`, `limited-availability`, `season-boundary`, `too-many-guests`, `past-date`, `booking-read`, `booking-create`, `booking-modify`, `booking-cancel`, `returning-caller`, `confirm-before-write`, `confirmation-email`.
-- Tags planned, no case yet (they need checks the scorer does not have): `language-switch`.
+- Tags in use: `relative-date`, `missing-info`, `limited-availability`, `season-boundary`, `too-many-guests`, `past-date`, `booking-read`, `booking-create`, `booking-modify`, `booking-cancel`, `returning-caller`, `confirm-before-write`, `confirmation-email`, `take-message`, `handoff`, `withheld-caller-id`, `tool-failure`, `followup-email`, `cancellation-email`, `language-switch`.
 
 ## Running
 `uv run python -m evals.run`: sync the prompt and the dataset -> run every case -> score -> record one Langfuse experiment.

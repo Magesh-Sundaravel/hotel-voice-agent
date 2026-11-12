@@ -31,15 +31,19 @@ class Turn(BaseModel):
 
     caller: str
     expect: TurnExpect = TurnExpect()
+    # The reply language from this turn on, when the caller switches mid-call.
+    language: Literal["it", "en"] | None = None
 
 
 class EvalCase(BaseModel):
-    """A scripted conversation. Replies must be in `language`."""
+    """A scripted conversation. Replies must be in `language` until a turn switches it."""
 
     id: str
     language: Literal["it", "en"]
     caller_phone: str | None = None  # the caller ID; None means withheld
     tags: list[str] = []
+    # Tools that fail with tool_error on every call, to test the follow-up path.
+    failing_tools: list[str] = []
     turns: list[Turn] = Field(min_length=1)
 
 

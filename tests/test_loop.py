@@ -151,7 +151,7 @@ async def test_tool_rounds_are_capped_then_model_must_answer_without_tools() -> 
     )
 
     assert result.reply == "Let me send you an email."
-    assert llm.tools_offered == [8, 8, 8, 8, 8, 0]
+    assert llm.tools_offered == [10, 10, 10, 10, 10, 0]
 
 
 @pytest.mark.asyncio

@@ -6,6 +6,7 @@ the same and SEQUENCE grows. See docs/external/gmail.md, section 6.
 """
 
 from datetime import UTC, datetime
+from typing import Literal
 
 from src.db.bookings import Booking
 
@@ -43,6 +44,7 @@ def booking_ics(
     summary: str,
     location: str,
     now: datetime,
+    method: Literal["REQUEST", "CANCEL"] = "REQUEST",
 ) -> bytes:
     """Build the invite for a stay as an all-day event from check-in to check-out.
 
@@ -54,6 +56,7 @@ def booking_ics(
         location: Hotel address.
         now: Send time; it sets DTSTAMP and SEQUENCE, so each send supersedes
             the last one.
+        method: REQUEST adds or updates the event; CANCEL removes it (same UID).
 
     Returns:
         The .ics file as UTF-8 bytes with CRLF line endings.
@@ -63,7 +66,7 @@ def booking_ics(
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
         "PRODID:-//Hotel Voice Agent//Booking//EN",
-        "METHOD:REQUEST",
+        f"METHOD:{method}",
         "BEGIN:VEVENT",
         f"UID:booking-{booking.reference}@{domain}",
         f"DTSTAMP:{now.astimezone(UTC):%Y%m%dT%H%M%SZ}",
@@ -74,7 +77,7 @@ def booking_ics(
         f"LOCATION:{_escape(location)}",
         f"ORGANIZER:mailto:{organizer}",
         f"ATTENDEE;RSVP=FALSE:mailto:{attendee}",
-        "STATUS:CONFIRMED",
+        "STATUS:CANCELLED" if method == "CANCEL" else "STATUS:CONFIRMED",
         "END:VEVENT",
         "END:VCALENDAR",
     ]

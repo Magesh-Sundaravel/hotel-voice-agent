@@ -58,6 +58,14 @@ class GuestSummary(BaseModel):
     has_email: bool
 
 
+class GuestContact(BaseModel):
+    """How to email a guest. Used by the server only; never sent to the model."""
+
+    guest_id: str
+    first_name: str
+    email: str | None
+
+
 class ConfirmationTarget(BaseModel):
     """What sending a confirmation needs. The email never reaches the model."""
 
@@ -77,6 +85,10 @@ class BookingRepository(Protocol):
 
     async def find_guest(self, phone: str) -> GuestSummary | None:
         """Find the guest with this phone (E.164)."""
+        ...
+
+    async def find_guest_contact(self, phone: str) -> GuestContact | None:
+        """Find the id, first name and email of the guest with this phone (E.164)."""
         ...
 
     async def create_booking(self, new: NewBooking) -> Booking | BookingConflict:
@@ -265,6 +277,15 @@ class InMemoryBookingRepository(InMemoryHotelRepository):
             has_email=guest.email is not None,
         )
 
+    async def find_guest_contact(self, phone: str) -> GuestContact | None:
+        """Find the id, first name and email of the guest with this phone."""
+        guest = self._guests.get(phone)
+        if guest is None:
+            return None
+        return GuestContact(
+            guest_id=guest.id, first_name=guest.first_name, email=guest.email
+        )
+
     async def get_booking(self, reference: str, last_name: str) -> Booking | None:
         """Find a booking by reference and last name, any case."""
         res = self._find(reference, last_name)
@@ -281,6 +302,7 @@ class InMemoryBookingRepository(InMemoryHotelRepository):
             res.booking = res.booking.model_copy(
                 update={"status": "cancelled", "cancelled_at": now}
             )
+            res.confirmation_sent_at = None  # the cancellation email is now due
         return res.booking
 
     async def modify_booking(

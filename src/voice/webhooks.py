@@ -6,6 +6,7 @@ system dynamic variables so the model never generates them: `call_id`
 carry the shared secret in X-Webhook-Secret. See docs/architecture.md.
 """
 
+import asyncio
 import hmac
 import json
 import logging
@@ -22,12 +23,22 @@ from src.agent.loop import run_tool
 from src.agent.registry import build_registry
 from src.config import Settings
 from src.db.bookings import BookingRepository
+from src.db.calls import CallLogError, CallLogRepository
 from src.db.hotel import HotelRepository
 from src.email.sender import EmailSender
 from src.tools.context import CallContext
 from src.tools.stay import E164
+from src.voice.call_language import (
+    Language,
+    as_language,
+    known_language,
+    remember_language,
+)
+from src.voice.call_log import call_event
 
 WEBHOOK_TRACE_NAME = "handle-tool-webhook"
+# The call log write comes after the tool answers, so keep it short.
+CALL_LOG_TIMEOUT_S = 0.5
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +49,7 @@ class Services:
 
     hotel: HotelRepository
     bookings: BookingRepository
+    calls: CallLogRepository
     sender: EmailSender
     settings: Settings
     http: httpx.AsyncClient
@@ -109,13 +121,48 @@ async def call_tool(
     )
     if name not in registry:
         raise HTTPException(status_code=404, detail="unknown tool")
-    arguments = json.dumps(body.model_extra or {})
-    # The caller's language is not known to tools yet (docs/architecture.md).
+    extra = body.model_extra or {}
+    arguments = json.dumps(extra)
+    # A language the model passed is the freshest; else what the /llm proxy saw.
+    # Only those reach the call log; the default is a guess, for the trace tag only.
+    spoken = as_language(extra.get("language")) if "language" in extra else None
+    if spoken:
+        remember_language(body.call_id, spoken)
+    known = known_language(body.call_id)
     with (
-        observability.call_session(body.call_id, "unknown"),
+        observability.call_session(
+            body.call_id, known or services.settings.agent_language
+        ),
         observability.turn_span(arguments, name=WEBHOOK_TRACE_NAME),
     ):
-        return await run_tool(
+        result = await run_tool(
             registry,
             ToolCall(id=f"{body.call_id}:{name}", name=name, arguments=arguments),
+        )
+    await _log_call(services.calls, body.call_id, name, extra, result, known)
+    return result
+
+
+async def _log_call(
+    calls: CallLogRepository,
+    call_id: str,
+    name: str,
+    arguments: dict[str, object],
+    result: BaseModel,
+    language: Language | None,
+) -> None:
+    """Record the tool call in the call log; a failure is a warning, never an error.
+
+    Like tracing, the call log must never break a call. Only the call_id and the
+    tool name are logged.
+    """
+    try:
+        async with asyncio.timeout(CALL_LOG_TIMEOUT_S):
+            await calls.record(call_event(call_id, name, arguments, result, language))
+    except (CallLogError, TimeoutError) as exc:
+        logger.warning(
+            "call log write failed for call %s after %s: %s",
+            call_id,
+            name,
+            type(exc).__name__ if isinstance(exc, TimeoutError) else exc,
         )

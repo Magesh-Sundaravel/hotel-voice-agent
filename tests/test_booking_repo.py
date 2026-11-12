@@ -431,3 +431,39 @@ async def test_modifying_a_booking_allows_a_new_confirmation(repos: Repos) -> No
     await repos.bookings.modify_booking(created.reference, "Testa", change(adults=1))
 
     assert await repos.bookings.claim_confirmation(created.reference, SENT_AT)
+
+
+@pytest.mark.asyncio
+async def test_the_guest_contact_is_found_by_phone(repos: Repos) -> None:
+    """The follow-up email needs the stored address; it never reaches the model."""
+    assert await repos.bookings.find_guest_contact("+12025550199") is None
+    await repos.bookings.create_booking(new_booking(email="ada@guest.example"))
+
+    contact = await repos.bookings.find_guest_contact("+12025550199")
+
+    assert contact is not None
+    assert (contact.first_name, contact.email) == ("Ada", "ada@guest.example")
+    assert contact.guest_id
+
+
+@pytest.mark.asyncio
+async def test_cancelling_makes_a_new_email_due(repos: Repos) -> None:
+    """The confirmation was sent; the cancellation is news, so the mark is cleared."""
+    created = await repos.bookings.create_booking(new_booking())
+    assert await repos.bookings.claim_confirmation(created.reference, SENT_AT)
+
+    await repos.bookings.cancel_booking(created.reference, "Testa", SENT_AT)
+
+    assert await repos.bookings.claim_confirmation(created.reference, SENT_AT)
+
+
+@pytest.mark.asyncio
+async def test_cancelling_again_keeps_the_mark(repos: Repos) -> None:
+    """A retried cancel must not make the cancellation email go out twice."""
+    created = await repos.bookings.create_booking(new_booking())
+    await repos.bookings.cancel_booking(created.reference, "Testa", SENT_AT)
+    assert await repos.bookings.claim_confirmation(created.reference, SENT_AT)
+
+    await repos.bookings.cancel_booking(created.reference, "Testa", SENT_AT)
+
+    assert not await repos.bookings.claim_confirmation(created.reference, SENT_AT)
