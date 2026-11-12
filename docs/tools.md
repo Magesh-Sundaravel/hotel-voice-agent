@@ -32,7 +32,7 @@ The loop (`src/agent/loop.py`, also behind the webhooks) returns these before or
 - Reasons: invalid_dates (check_out not after check_in, check_in in the past, or a stay longer than 30 nights), invalid_guests (guests below 1), too_many_guests (above every room type's max_guests)
 - Side effects: none
 - Idempotent: n/a (read-only)
-- Typical latency: under 300 ms (in-memory now, one Supabase query later)
+- Typical latency: under 300 ms (one Supabase query for the room types, then one count per type)
 - Empty `options` is a valid answer (fully booked), not an error.
 
 ## get_rates
