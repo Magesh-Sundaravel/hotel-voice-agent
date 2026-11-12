@@ -2,9 +2,9 @@
 
 A 24/7 AI receptionist that answers hotel phone calls in Italian and English. Portfolio project.
 
-> **Status: work in progress.** The agent loop, two read-only tools, tracing and an eval suite work today and can be tried in a text REPL. The phone path (ElevenLabs and Telnyx wiring, `/llm` proxy, tool webhooks) is not built yet. The Supabase schema and a Postgres repository exist, but the app doesn't use them until the phone path is wired. See [Roadmap](#roadmap).
+> **Status: work in progress.** The agent loop, eight tools, Gmail confirmations, tracing and an eval suite work today and can be tried in a text REPL. The phone path (`/llm` proxy, authenticated tool webhooks) is built and the API runs on Supabase, but it has not yet been tested on a real call. See [Roadmap](#roadmap).
 
-## How it will work
+## How it works
 
 ```
 Caller -> Telnyx SIP trunk -> ElevenLabs Agent (STT, turn-taking, TTS)
@@ -35,7 +35,10 @@ Why these choices: [docs/decisions/](docs/decisions/).
 - Agent loop with native tool calling and no graph framework (`src/agent/`)
 - Tools: `check_availability`, `get_rates`, `get_guest_info`, `create_booking`, `get_booking`, `modify_booking`, `cancel_booking` and `send_confirmation_email` (Gmail, with an `.ics` invite), backed by an in-memory seed repository in the CLI and evals, with a Postgres version tested against Supabase (`src/tools/`, `src/db/`)
 - Langfuse tracing of model calls and eval runs, with PII masking (`src/observability.py`)
-- Bilingual golden eval dataset (24 cases, Italian and English) with a runner and scorer (`evals/`)
+- Bilingual golden eval dataset (31 cases, Italian and English) with a runner and scorer (`evals/`)
+- `/llm` proxy that streams Groq in the OpenAI format ElevenLabs expects, traced in Langfuse (`src/voice/llm_proxy.py`)
+- Authenticated tool webhooks (`POST /tools/{name}`) with a ~1.5 s time budget, running on Postgres (`src/voice/webhooks.py`)
+- ElevenLabs tool configs exported from the registry (`src/voice/export_tools.py`); one-time phone setup in [docs/setup-elevenlabs-telnyx.md](docs/setup-elevenlabs-telnyx.md)
 - `/health` endpoint, Dockerfile and Compose file
 
 Tool contracts are in [docs/tools.md](docs/tools.md).
@@ -79,7 +82,7 @@ Evals send traces to Langfuse, so set the `LANGFUSE_*` variables first. The data
 ```
 src/agent/   system prompt, LLM client, agent loop, tool registry, text CLI
 src/tools/   one module per tool
-src/voice/   ElevenLabs and Telnyx glue (not built yet)
+src/voice/   /llm proxy, tool webhooks, ElevenLabs tool export
 src/db/      all data access: Postgres on Supabase, plus an in-memory repo for the CLI, tests and evals
 tests/       unit tests
 evals/       golden dataset (source of truth) and runner
@@ -95,14 +98,17 @@ docs/        architecture, tool contracts, data model, decisions, vendor notes
 
 ## Roadmap
 
-- [ ] `/llm` proxy that streams to Groq in the OpenAI format ElevenLabs expects
-- [ ] Authenticated tool webhooks with a ~1.5 s time budget
-- [ ] ElevenLabs agent and Telnyx number configuration (`src/voice/`)
+- [x] `/llm` proxy that streams to Groq in the OpenAI format ElevenLabs expects
+- [x] Authenticated tool webhooks with a ~1.5 s time budget
+- [ ] First real call through Telnyx and ElevenLabs (setup guide written, open questions in docs/architecture.md)
 - [x] Supabase schema, migrations, seed and Postgres repository for inventory and rates
 - [x] Repository writes for guests and reservations
-- [ ] Call log writes (needs the phone path)
+- [ ] Call log writes and the tool-failure follow-up email
 - [x] Booking tools: create, modify and cancel a reservation, guest lookup by caller ID
-- [ ] Gmail confirmation emails with an `.ics` invite
-- [ ] More eval cases: booking, returning callers, tool failure, language switching
+- [x] Gmail confirmation emails with an `.ics` invite
+- [ ] Cancellation email (`.ics` `METHOD:CANCEL`)
+- [ ] Read the hotel inbox on demand (`check_guest_email`)
+- [ ] LLM judge for spoken replies in the evals
+- [ ] More eval cases: tool failure, language switching
 - [ ] CI for tests, lint and evals
 - [ ] AWS deployment (ECS Fargate), as a future option
