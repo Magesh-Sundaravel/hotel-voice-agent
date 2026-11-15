@@ -1,4 +1,4 @@
-# Setup: Gmail, backend, ElevenLabs, Telnyx
+# Setup: Gmail, backend, ElevenLabs, Twilio
 
 One-time steps only a human can do, in order. Each ends with a check. Vendor facts come from docs/external/; anything marked "check" is unverified and should be confirmed (and noted in docs/external/) the first time.
 
@@ -32,12 +32,13 @@ One-time steps only a human can do, in order. Each ends with a check. Vendor fac
   - The tool webhooks return 200.
   - The confirmation email arrives.
 
-## 5. Telnyx phone number (docs/external/elevenlabs.md, section 4)
-1. Telnyx: create an FQDN SIP connection to `sip.rtc.elevenlabs.io`.
-   - Inbound: destination number format +E.164, transport TCP.
-   - Assign the number on the Numbers tab.
-2. ElevenLabs: import the number as a SIP trunk number (E.164 with the leading +) and assign the agent. Media encryption: Allowed, to start.
-- Check: call the number from a phone.
+## 5. Twilio phone number (docs/external/twilio.md)
+1. Twilio: upgrade the account (add funds). A trial can't buy regulated numbers and probably blocks the media stream ElevenLabs uses.
+2. Buy a US local number for the first test call. An Italian number needs an approved Regulatory Bundle first (address and ID documents, about 72 h review); do that in parallel.
+3. ElevenLabs > Phone Numbers > import from Twilio: label, the number (E.164 with the leading +), Account SID and Auth Token. ElevenLabs sets the Twilio webhook itself; leave the Twilio console alone. Turn SMS off if it offers the option.
+   - Account SID + Auth Token, not an API key: an API-key import also needs `account_auth_token` (API reference).
+4. Assign the agent in the number's inbound dropdown.
+- Check: call the number from a phone. The agent answers with the English first message.
 
 ## 6. First real call: settle the open points (docs/architecture.md, Open questions)
 - Whether `system__caller_id` arrived. Call from a number on file: get_guest_info should find the guest.

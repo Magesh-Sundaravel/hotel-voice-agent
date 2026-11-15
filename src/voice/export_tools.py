@@ -4,7 +4,7 @@
         --secret-id <elevenlabs-secret-id>
 
 Nothing is sent to ElevenLabs. Field names follow docs/external/elevenlabs.md,
-section 2; see docs/setup-elevenlabs-telnyx.md for what to check on first paste.
+section 2; see docs/setup-elevenlabs-twilio.md for what to check on first paste.
 """
 
 import argparse

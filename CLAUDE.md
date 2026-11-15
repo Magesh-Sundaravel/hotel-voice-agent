@@ -4,7 +4,7 @@
 
 ## Stack
 - Voice: ElevenLabs Agents (STT, TTS, turn-taking)
-- Phone: Telnyx SIP trunk -> ElevenLabs
+- Phone: Twilio number -> ElevenLabs native Twilio integration (docs/decisions/006-twilio.md)
 - LLM: built into ElevenLabs on live calls (docs/decisions/005-elevenlabs-llm.md). Groq runs the evals and the CLI; the `/llm` proxy to Groq is kept but unused
 - Backend: FastAPI (Python 3.12, uv). Hosts the tools the agent calls.
 - Deployment: local Docker Compose + ngrok (AWS is a future option)
@@ -15,7 +15,7 @@
 ## Layout
 - src/agent/  system prompt, tool registry
 - src/tools/  one module per tool
-- src/voice/  ElevenLabs / Telnyx glue
+- src/voice/  ElevenLabs / Twilio glue
 - src/db/     all Supabase access
 - tests/      unit tests
 - evals/      golden dataset (source of truth) + runner

@@ -1,6 +1,6 @@
 ---
 name: docs-researcher
-description: Looks up current ElevenLabs, Telnyx, Groq, Google, Langfuse and AWS docs. Use before writing any integration or deployment code; these change often.
+description: Looks up current ElevenLabs, Twilio, Groq, Google, Langfuse and AWS docs. Use before writing any integration or deployment code; these change often.
 tools: WebSearch, WebFetch, Read, Write
 ---
 Find the official docs for the exact feature asked about. Return:
