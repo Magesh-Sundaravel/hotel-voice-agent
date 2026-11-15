@@ -114,6 +114,15 @@ async def test_forwards_with_our_prompt_model_and_key(groq: FakeGroq) -> None:
 
 
 @pytest.mark.asyncio
+async def test_asks_groq_to_leave_reasoning_out_of_the_stream(groq: FakeGroq) -> None:
+    """gpt-oss streams non-standard `reasoning` deltas unless told not to."""
+    await _post("/llm/v1/chat/completions")
+
+    (request,) = groq.requests
+    assert json.loads(request.content)["include_reasoning"] is False
+
+
+@pytest.mark.asyncio
 async def test_a_wrong_secret_is_refused(groq: FakeGroq) -> None:
     """Nobody else can spend the Groq key."""
     response = await _post(

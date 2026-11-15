@@ -1,6 +1,6 @@
 # 001: ElevenLabs Agents + Telnyx SIP + Groq
 
-Status: accepted
+Status: accepted; the LLM part is superseded by 005-elevenlabs-llm.md (live calls use an ElevenLabs built-in LLM)
 
 ## Decision
 ElevenLabs Agents for voice, Telnyx SIP trunk for the phone number, Groq as the LLM (behind our own `/llm` proxy so Langfuse can trace it).

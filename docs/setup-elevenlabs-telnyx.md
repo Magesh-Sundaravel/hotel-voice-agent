@@ -10,7 +10,7 @@ One-time steps only a human can do, in order. Each ends with a check. Vendor fac
 - Check: `uv run python -m src.agent.cli --real-email`, book a room giving your own email, and confirm the email arrives with `booking.ics`. Also check whether Gmail shows RSVP buttons, and record it in docs/external/gmail.md.
 
 ## 2. Database
-- `uv run python -m src.db.migrate` (applies `0003_confirmation_sent_at.sql`).
+- `uv run python -m src.db.migrate` (applies any migration in `db/migrations/` not yet recorded in `schema_migrations`).
 - Check: `uv run pytest -q` passes, including the Postgres variants.
 
 ## 3. Backend online
@@ -20,18 +20,15 @@ One-time steps only a human can do, in order. Each ends with a check. Vendor fac
 
 ## 4. ElevenLabs agent
 1. Workspace secrets: create a secret holding the `WEBHOOK_SECRET` value, and note its secret id.
-2. Agent > LLM: **Custom LLM**.
-   - Server URL: `https://<domain>/llm/v1/chat/completions`.
-   - Model ID: anything; the proxy uses `GROQ_MODEL`.
-   - Request headers:
-     - `X-Webhook-Secret`: type Secret, the secret above.
-     - `X-Call-Id`: type dynamic variable, `system__conversation_id`.
-3. Agent > Prompt: a one-line placeholder such as "The system prompt is supplied by the backend." The proxy puts the real prompt first.
-4. Languages: English as the default plus an Italian preset, each with its own first message. Turn on the `language_detection` system tool. The default language must match `AGENT_LANGUAGE` in `.env` (`en`), which tags traces and the call log until the caller switches.
-5. Tools: run `uv run python -m src.voice.export_tools --base-url https://<domain> --secret-id <id>` and add each of the 8 configs as a webhook tool (JSON editor).
+   The tool configs reference it by id. Find the id with `curl -s https://api.elevenlabs.io/v1/convai/secrets -H "xi-api-key: <your ElevenLabs API key>"` (field `secret_id`).
+2. Agent > LLM: the built-in `claude-haiku-5.5`, not Custom LLM (docs/decisions/005-elevenlabs-llm.md).
+   - The unused alternative, Custom LLM through our `/llm` proxy to Groq, is described in docs/architecture.md (LLM path). It needs a paid Groq tier.
+3. Agent > Prompt: paste the output of `uv run python -m src.voice.export_prompt`. Set the agent timezone to **Europe/Rome** in the System Prompt editor; `{{system__time_date}}` uses it. Paste again after every change to `src/agent/prompts/receptionist.md`.
+4. Languages: English as the default plus an Italian preset, each with its own first message. Turn on the `language_detection` system tool. The default language must match `AGENT_LANGUAGE` in `.env` (`en`), which tags traces and the call log (it does not switch with the caller: docs/decisions/005-elevenlabs-llm.md).
+5. Tools: run `uv run python -m src.voice.export_tools --base-url https://<domain> --secret-id <id>` and add each of the 10 configs as a webhook tool (JSON editor).
    - Check: the dashboard accepts the outer fields `type: "webhook"` and `api_schema`, and the per-property `dynamic_variable`. If it renames anything, fix `src/voice/export_tools.py` and note it in docs/external/elevenlabs.md.
 - Check: talk to the agent from the ElevenLabs test widget. Ask for availability, then book with an email. In the backend logs:
-  - `custom LLM request on /llm/...`: note which path was hit. If it's the doubled `/chat/completions/chat/completions`, change the Server URL to `https://<domain>/llm/v1`.
+  - The agent knows today's date (ask "what day is it today?"). If it reads out `{{system__time_date}}`, the variable wasn't filled: check the timezone setting.
   - The tool webhooks return 200.
   - The confirmation email arrives.
 
@@ -43,8 +40,7 @@ One-time steps only a human can do, in order. Each ends with a check. Vendor fac
 - Check: call the number from a phone.
 
 ## 6. First real call: settle the open points (docs/architecture.md, Open questions)
-- Which `/llm` path ElevenLabs called (backend log).
-- Whether `X-Call-Id` arrived with the conversation id. In Langfuse, the LLM traces should share a session with the tool traces, not sit under "unknown".
 - Whether `system__caller_id` arrived. Call from a number on file: get_guest_info should find the guest.
-- What ElevenLabs puts in its own system message (it appears after ours in the Langfuse generation input).
+- What ElevenLabs adds to the system prompt on its own (Agent > Conversations, conversation details).
+- (Settled 2026-11-15, Custom LLM path only: ElevenLabs calls `/llm/v1/chat/completions` and `X-Call-Id` arrives.)
 Write each answer into docs/external/elevenlabs.md and remove it from the open questions.
