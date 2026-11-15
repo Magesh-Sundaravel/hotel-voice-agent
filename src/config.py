@@ -13,10 +13,9 @@ class Settings(BaseSettings):
     elevenlabs_api_key: str = ""
     groq_api_key: str = ""
     groq_model: str = "openai/gpt-oss-120b"
-    # The ElevenLabs agent's default language (docs/setup-elevenlabs-telnyx.md,
+    # The ElevenLabs agent's default language (docs/setup-elevenlabs-twilio.md,
     # step 4): a call's language until language_detection switches it.
     agent_language: Literal["it", "en"] = "en"
-    telnyx_api_key: str = ""
     # Shared secret ElevenLabs sends in X-Webhook-Secret on tool and /llm calls.
     webhook_secret: str = ""
     # Supabase session pooler connection string (Connect -> Session pooler).

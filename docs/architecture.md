@@ -1,8 +1,8 @@
 # Architecture
 
 ## Call flow
-1. Guest dials the hotel number (Telnyx)
-2. Telnyx SIP trunk routes the call to the ElevenLabs agent
+1. Guest dials the hotel number (Twilio)
+2. ElevenLabs' native Twilio integration routes the call to the ElevenLabs agent (docs/decisions/006-twilio.md)
 3. ElevenLabs does STT -> LLM -> TTS. The LLM is built into ElevenLabs (docs/decisions/005-elevenlabs-llm.md, see LLM path)
 4. When the LLM calls a tool, ElevenLabs hits our FastAPI backend through ngrok
 5. Backend reads/writes Supabase and Gmail and returns a result
@@ -58,7 +58,7 @@ Upgrade path: signed requests (HMAC over body + timestamp).
 ElevenLabs' minimum webhook timeout is 5 s, above our ~1.5 s budget, so the backend enforces the budget itself. Retries are undocumented, so assume none and keep every tool idempotent (see data-model.md).
 
 ## Returning callers
-The caller ID (E.164) arrives as the `system__caller_id` dynamic variable and is bound to a tool parameter so the LLM never generates it. It is matched against `guests.phone`. Unverified: whether Telnyx supplies it without extra SIP headers; test on the first real call.
+The caller ID (E.164) arrives as the `system__caller_id` dynamic variable and is bound to a tool parameter so the LLM never generates it. It is matched against `guests.phone`. With Twilio's native integration the ElevenLabs docs list it as filled on every voice call (docs/external/twilio.md); confirm on the first real call.
 - Match: greet by first name, confirm identity before using any stored detail.
 - No match or withheld number: ask the name. A guest row is created only when a booking is made. A bare call stores nothing.
 
@@ -87,8 +87,8 @@ Backend uses the refresh token to get access tokens; no human in the loop at run
 The OAuth app must be published "In production" (unverified is fine for one account): in "Testing", refresh tokens with Gmail scopes expire after 7 days. Changing the account's password also revokes the token.
 
 ## Open questions
-To settle on the first real call (see docs/setup-elevenlabs-telnyx.md):
+To settle on the first real call (see docs/setup-elevenlabs-twilio.md):
 - What ElevenLabs adds to the system prompt on its own (it can't be seen in Langfuse any more; check the conversation details in ElevenLabs).
 - Whether Gmail and Google Calendar remove the event when the cancellation's `METHOD:CANCEL` update arrives (docs/external/gmail.md marks it UNVERIFIED); check on the first real cancellation.
-- Language tag (known gap, docs/decisions/005-elevenlabs-llm.md): with the built-in LLM nothing learns the caller's language, so every trace and `call_log.language` get `AGENT_LANGUAGE`. Planned fix: a model-filled `language` parameter on every tool. With the proxy, it worked like this: no ElevenLabs variable gives the caller's language, so the `/llm` proxy reads it from the latest `language_detection` call in the conversation, else uses `AGENT_LANGUAGE` (the agent's default language, `en` as in docs/setup-elevenlabs-telnyx.md), and remembers it per call_id for the tool webhooks (`src/voice/call_language.py`). Unverified: the name and argument format ElevenLabs uses for `language_detection` in the messages it sends; `it`, `it-IT` and `Italian` are all accepted.
+- Language tag (known gap, docs/decisions/005-elevenlabs-llm.md): with the built-in LLM nothing learns the caller's language, so every trace and `call_log.language` get `AGENT_LANGUAGE`. Planned fix: a model-filled `language` parameter on every tool. With the proxy, it worked like this: no ElevenLabs variable gives the caller's language, so the `/llm` proxy reads it from the latest `language_detection` call in the conversation, else uses `AGENT_LANGUAGE` (the agent's default language, `en` as in docs/setup-elevenlabs-twilio.md), and remembers it per call_id for the tool webhooks (`src/voice/call_language.py`). Unverified: the name and argument format ElevenLabs uses for `language_detection` in the messages it sends; `it`, `it-IT` and `Italian` are all accepted.
 (Eval format and scoring are tracked in docs/evals.md.)

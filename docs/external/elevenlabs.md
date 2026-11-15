@@ -28,18 +28,12 @@ Src: https://elevenlabs.io/docs/api-reference/tools/create
 Src: https://elevenlabs.io/docs/agents-platform/customization/personalization/dynamic-variables
 - `system__caller_id` (caller phone), `system__called_number`, `system__call_id` (SIP Call-ID, SIP trunk only), `system__conversation_id`, `system__agent_id`.
 - Prompts: `{{system__caller_id}}`. Tools: bind a param to the dynamic variable (dynamic_variable value type) so it is sent in the call, not LLM-generated. conversation_id is available the same way.
-- Caller id/call id come from SIP `X-CALLER-ID` / `X-CALL-ID` headers if sent (sip-trunking page). UNVERIFIED: whether Telnyx populates caller_id without those headers (likely from SIP From, test it).
+- Caller id/call id come from SIP `X-CALLER-ID` / `X-CALL-ID` headers if sent (sip-trunking page). On Twilio native calls `system__caller_id` is filled without headers and `system__call_id` is null (docs/external/twilio.md, section 3).
 - Custom inbound `X-Foo-Bar` headers become `{{sip_foo_bar}}`.
 - Caller id is unauthenticated data; do not use for auth (docs say same for system__user_id).
 
-## 4. Telnyx SIP trunk (inbound)
-Src: https://elevenlabs.io/docs/eleven-agents/phone-numbers/telephony/telnyx.md
-Src: https://elevenlabs.io/docs/eleven-agents/phone-numbers/sip-trunking.md
-- Telnyx: create FQDN-type SIP connection; FQDN `sip.rtc.elevenlabs.io`; assign your number on Numbers tab.
-- Inbound tab: destination number format +E.164, transport TCP (docs for Telnyx), pick region. Outbound: voice profile + credentials.
-- ElevenLabs side: import number as SIP trunk phone number (E.164, leading + must match), assign agent. Endpoint sip.rtc.elevenlabs.io: TCP 5060, TLS 5061 (recommended prod), UDP experimental.
-- Media encryption Disabled/Allowed/Required (test Allowed first). Codecs G.722, PCMU, PCMA. TLS >= 1.2. Digest auth recommended; else ACL.
-- UNVERIFIED: Telnyx-specific TLS/SRTP settings.
+## 4. Phone number
+Twilio native integration: see docs/external/twilio.md (decision 006). The earlier Telnyx SIP trunk notes are in git history.
 
 ## Contradictions with docs/architecture.md
 Not checked: architecture.md was not read (task said edit/touch nothing else). Compare manually, especially LLM auth and tool retry assumptions.

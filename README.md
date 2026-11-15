@@ -2,12 +2,12 @@
 
 A 24/7 AI receptionist that answers hotel phone calls in Italian and English. Portfolio project.
 
-> **Status: work in progress.** The agent loop, all booking tools, Gmail confirmations, tracing and an eval suite work today and can be tried in a text REPL. The backend side of the phone path (`/llm` proxy and tool webhooks, backed by Supabase) is built; it has not yet been tested on a real call through ElevenLabs and Telnyx. See [Roadmap](#roadmap).
+> **Status: work in progress.** The agent loop, all booking tools, Gmail confirmations, tracing and an eval suite work today and can be tried in a text REPL. The backend side of the phone path (`/llm` proxy and tool webhooks, backed by Supabase) is built; it has not yet been tested on a real call through ElevenLabs and Twilio. See [Roadmap](#roadmap).
 
 ## How it works
 
 ```
-Caller -> Telnyx SIP trunk -> ElevenLabs Agent (STT, LLM, turn-taking, TTS)
+Caller -> Twilio number -> ElevenLabs Agent (STT, LLM, turn-taking, TTS)
                                    |
                                    +-> tool webhooks (FastAPI) -> Supabase, Gmail
 ```
@@ -19,7 +19,7 @@ ElevenLabs handles speech and turn-taking. On live calls the LLM is built into E
 | Concern | Choice |
 |---|---|
 | Voice | ElevenLabs Agents |
-| Phone | Telnyx SIP trunk |
+| Phone | Twilio (ElevenLabs native integration) |
 | LLM | ElevenLabs built-in model on live calls; Groq (`openai/gpt-oss-120b`) for the CLI and evals |
 | Backend | FastAPI, Python 3.12, uv |
 | Data | Supabase (hosted free tier) |
@@ -99,7 +99,7 @@ docs/        architecture, tool contracts, data model, decisions, vendor notes
 
 - [x] `/llm` proxy that streams to Groq in the OpenAI format ElevenLabs expects
 - [x] Authenticated tool webhooks with a ~1.5 s time budget
-- [ ] ElevenLabs agent and Telnyx number tested on a real call ([setup guide](docs/setup-elevenlabs-telnyx.md))
+- [ ] ElevenLabs agent and Twilio number tested on a real call ([setup guide](docs/setup-elevenlabs-twilio.md))
 - [x] Supabase schema, migrations, seed and Postgres repository for inventory and rates
 - [x] Repository writes for guests and reservations
 - [x] Call log writes from the tool webhooks (`ended_at` still needs the post-call webhook)

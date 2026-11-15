@@ -13,7 +13,7 @@ Room availability lives only here. There is no calendar integration.
 | id | uuid pk | the only guest identifier that may be logged |
 | first_name | text | |
 | last_name | text | |
-| phone | text unique | E.164, matched against the Telnyx caller ID |
+| phone | text unique | E.164, matched against the caller ID (`system__caller_id`) |
 | email | text | nullable; used for confirmations and follow-ups |
 | language | text | `it` or `en` |
 | created_at | timestamptz | |
