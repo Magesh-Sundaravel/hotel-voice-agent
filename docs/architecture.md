@@ -3,11 +3,11 @@
 ## Call flow
 1. Guest dials the hotel number (Telnyx)
 2. Telnyx SIP trunk routes the call to the ElevenLabs agent
-3. ElevenLabs does STT -> LLM -> TTS. The LLM is our own `/llm` proxy in FastAPI, which forwards to Groq (see LLM path)
+3. ElevenLabs does STT -> LLM -> TTS. The LLM is built into ElevenLabs (docs/decisions/005-elevenlabs-llm.md, see LLM path)
 4. When the LLM calls a tool, ElevenLabs hits our FastAPI backend through ngrok
 5. Backend reads/writes Supabase and Gmail and returns a result
 6. Agent speaks the result
-7. Tool calls and LLM calls are traced in Langfuse
+7. Tool calls are traced in Langfuse. The conversation itself (transcript, LLM turns) stays in ElevenLabs
 
 ## Run model
 Local, for a portfolio demo: FastAPI runs in Docker Compose on the developer's laptop; Supabase and Langfuse are hosted (`docker-compose.yml`).
@@ -17,8 +17,8 @@ Supabase is the hosted free tier. AWS is a future option (ECS Fargate would be t
 ## Components
 | Component | Owns | Code |
 |---|---|---|
-| ElevenLabs agent | voice, turn-taking, tool definitions (exported from the registry) | dashboard config, `src/voice/export_tools.py` |
-| FastAPI backend (local, via ngrok) | tool webhooks, `/llm` proxy, system prompt | src/tools/, src/voice/, src/agent/ |
+| ElevenLabs agent | voice, turn-taking, LLM, system prompt and tool definitions (both exported from the repo) | dashboard config, `src/voice/export_prompt.py`, `src/voice/export_tools.py` |
+| FastAPI backend (local, via ngrok) | tool webhooks, system prompt source, `/llm` proxy (unused on live calls) | src/tools/, src/voice/, src/agent/ |
 | Supabase (hosted) | guests, rooms, room types, rates, reservations, call log (see data-model.md) | src/db/ |
 | Gmail | send confirmations (with .ics invite) and follow-ups; read on demand | src/email/, src/tools/send_confirmation_email.py |
 | Langfuse Cloud | traces, eval runs, scores | evals/ |
@@ -26,7 +26,14 @@ Supabase is the hosted free tier. AWS is a future option (ECS Fargate would be t
 Room availability lives only in Supabase. There is no calendar integration; guests get a calendar invite as an `.ics` attachment on the confirmation email.
 
 ## LLM path
-ElevenLabs is configured with a custom LLM that points at FastAPI `/llm/v1/chat/completions` (OpenAI-compatible, `src/voice/llm_proxy.py`). The proxy forwards to Groq and records the call in Langfuse.
+Live calls use an ElevenLabs built-in LLM, `claude-haiku-5.5`, chosen in the dashboard (docs/decisions/005-elevenlabs-llm.md).
+- Prompt: `uv run python -m src.voice.export_prompt` prints `src/agent/prompts/receptionist.md` with `{{today}}` replaced by `{{system__time_date}}`, which ElevenLabs fills in the agent's timezone (Europe/Rome). Paste it into the dashboard again after every prompt change.
+- Evals run the same prompt on Groq (`src/agent/llm.py`), for local checking only: they do not test the live model.
+- Langfuse sees only the tool traces of a live call. The language tag is always `AGENT_LANGUAGE`, because the language was learned by the proxy (see Open questions).
+
+### Unused alternative: the `/llm` proxy
+Kept as the way back to Groq (for example on a paid tier) or another OpenAI-compatible LLM. To use it, choose Custom LLM in the dashboard as described below. Verified live on 2026-11-15: ElevenLabs calls `/llm/v1/chat/completions` (not the doubled path) and `X-Call-Id` arrives. Groq's free tier (8K tokens/min) is too small for it.
+When configured, ElevenLabs points its custom LLM at FastAPI `/llm/v1/chat/completions` (OpenAI-compatible, `src/voice/llm_proxy.py`). The proxy forwards to Groq and records the call in Langfuse.
 This is the only way Langfuse can trace LLM calls. The extra hop is small next to Groq's latency.
 Request shape (verified in docs/external/elevenlabs.md): OpenAI `chat/completions`-style, streamed as SSE ending in `data: [DONE]`.
 What the proxy does to each request:
@@ -81,9 +88,7 @@ The OAuth app must be published "In production" (unverified is fine for one acco
 
 ## Open questions
 To settle on the first real call (see docs/setup-elevenlabs-telnyx.md):
-- Which `/llm` path ElevenLabs calls (the proxy logs it).
-- Whether a dynamic-variable header resolves `system__conversation_id` on the custom LLM (`X-Call-Id`); if not, LLM traces land in session "unknown".
-- What ElevenLabs puts in its own system message, now placed after ours.
+- What ElevenLabs adds to the system prompt on its own (it can't be seen in Langfuse any more; check the conversation details in ElevenLabs).
 - Whether Gmail and Google Calendar remove the event when the cancellation's `METHOD:CANCEL` update arrives (docs/external/gmail.md marks it UNVERIFIED); check on the first real cancellation.
-- Language tag: no ElevenLabs variable gives the caller's language, so the `/llm` proxy reads it from the latest `language_detection` call in the conversation, else uses `AGENT_LANGUAGE` (the agent's default language, `en` as in docs/setup-elevenlabs-telnyx.md), and remembers it per call_id for the tool webhooks (`src/voice/call_language.py`). This needs `X-Call-Id` to resolve (above); without it, traces get `AGENT_LANGUAGE`. Unverified: the name and argument format ElevenLabs uses for `language_detection` in the messages it sends; `it`, `it-IT` and `Italian` are all accepted.
+- Language tag (known gap, docs/decisions/005-elevenlabs-llm.md): with the built-in LLM nothing learns the caller's language, so every trace and `call_log.language` get `AGENT_LANGUAGE`. Planned fix: a model-filled `language` parameter on every tool. With the proxy, it worked like this: no ElevenLabs variable gives the caller's language, so the `/llm` proxy reads it from the latest `language_detection` call in the conversation, else uses `AGENT_LANGUAGE` (the agent's default language, `en` as in docs/setup-elevenlabs-telnyx.md), and remembers it per call_id for the tool webhooks (`src/voice/call_language.py`). Unverified: the name and argument format ElevenLabs uses for `language_detection` in the messages it sends; `it`, `it-IT` and `Italian` are all accepted.
 (Eval format and scoring are tracked in docs/evals.md.)

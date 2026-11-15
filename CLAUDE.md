@@ -5,7 +5,7 @@
 ## Stack
 - Voice: ElevenLabs Agents (STT, TTS, turn-taking)
 - Phone: Telnyx SIP trunk -> ElevenLabs
-- LLM: Groq, plugged into ElevenLabs as the agent's LLM
+- LLM: built into ElevenLabs on live calls (docs/decisions/005-elevenlabs-llm.md). Groq runs the evals and the CLI; the `/llm` proxy to Groq is kept but unused
 - Backend: FastAPI (Python 3.12, uv). Hosts the tools the agent calls.
 - Deployment: local Docker Compose + ngrok (AWS is a future option)
 - Data: Supabase (guests, rooms, rates, reservations, call log)
@@ -23,6 +23,7 @@
 ## Commands
 - Install: `uv sync --all-extras`
 - Run:     `uv run uvicorn src.main:app --reload`
+- Prompt:  `uv run python -m src.voice.export_prompt` (paste into the ElevenLabs dashboard after every prompt change)
 - Test:    `uv run pytest -q`
 - Evals:   `uv run python -m evals.run`
 - Migrate: `uv run python -m src.db.migrate [--seed]`

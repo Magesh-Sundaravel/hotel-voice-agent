@@ -169,6 +169,9 @@ async def chat_completions(
         **{k: v for k, v in extra.items() if k in _FORWARDED_FIELDS},
         "model": settings.groq_model,
         "stream": True,
+        # gpt-oss otherwise streams `reasoning`/`channel` deltas before any
+        # content; ElevenLabs then reports "Brain returned no response".
+        "include_reasoning": False,
         "messages": messages,
     }
     upstream_request = services.http.build_request(

@@ -7,13 +7,12 @@ A 24/7 AI receptionist that answers hotel phone calls in Italian and English. Po
 ## How it works
 
 ```
-Caller -> Telnyx SIP trunk -> ElevenLabs Agent (STT, turn-taking, TTS)
+Caller -> Telnyx SIP trunk -> ElevenLabs Agent (STT, LLM, turn-taking, TTS)
                                    |
-                                   +-> /llm proxy (FastAPI) -> Groq     (traced in Langfuse)
                                    +-> tool webhooks (FastAPI) -> Supabase, Gmail
 ```
 
-ElevenLabs handles speech and turn-taking. The LLM is Groq, reached through our own OpenAI-compatible `/llm` endpoint so every model call can be traced. The FastAPI backend hosts the tools the agent calls. Full flow: [docs/architecture.md](docs/architecture.md).
+ElevenLabs handles speech and turn-taking. On live calls the LLM is built into ElevenLabs, with the system prompt exported from this repo ([decision 005](docs/decisions/005-elevenlabs-llm.md)). The evals run the same prompt on Groq, for local checking. The FastAPI backend hosts the tools the agent calls. Full flow: [docs/architecture.md](docs/architecture.md).
 
 ## Stack
 
@@ -21,7 +20,7 @@ ElevenLabs handles speech and turn-taking. The LLM is Groq, reached through our 
 |---|---|
 | Voice | ElevenLabs Agents |
 | Phone | Telnyx SIP trunk |
-| LLM | Groq (`openai/gpt-oss-120b` by default) |
+| LLM | ElevenLabs built-in model on live calls; Groq (`openai/gpt-oss-120b`) for the CLI and evals |
 | Backend | FastAPI, Python 3.12, uv |
 | Data | Supabase (hosted free tier) |
 | Email | Gmail (confirmations with an `.ics` invite) |
@@ -34,7 +33,7 @@ Why these choices: [docs/decisions/](docs/decisions/).
 
 - Agent loop with native tool calling and no graph framework (`src/agent/`)
 - Tools: `check_availability`, `get_rates`, `get_guest_info`, `create_booking`, `get_booking`, `modify_booking`, `cancel_booking`, `send_confirmation_email` (Gmail, with an `.ics` invite), `take_message` (a message for reception, the handoff to a person) and `send_followup_email` (after a tool keeps failing), backed by an in-memory seed repository in the CLI and evals, with a Postgres version tested against Supabase (`src/tools/`, `src/db/`)
-- `/llm/v1/chat/completions`: OpenAI-compatible proxy that ElevenLabs uses as its custom LLM. It adds our system prompt, forwards to Groq, streams the reply back and traces it (`src/voice/llm_proxy.py`)
+- `/llm/v1/chat/completions`: OpenAI-compatible proxy for using Groq as ElevenLabs' custom LLM; kept but unused on live calls (Groq's free tier is too small). It adds our system prompt, forwards to Groq, streams the reply back and traces it (`src/voice/llm_proxy.py`)
 - `POST /tools/{name}`: tool webhooks for ElevenLabs, authenticated with a shared secret and running the same code as the CLI and evals (`src/voice/webhooks.py`)
 - Tool configs for the ElevenLabs dashboard, exported from the registry (`src/voice/export_tools.py`)
 - Langfuse tracing of model calls, tool calls and eval runs, with PII masking (`src/observability.py`)

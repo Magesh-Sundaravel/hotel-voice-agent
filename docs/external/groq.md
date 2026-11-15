@@ -33,7 +33,7 @@ Src: https://console.groq.com/docs/tool-use , https://console.groq.com/docs/mode
 - Primary: `openai/gpt-oss-120b` (production, not deprecated, 500 t/s, tools supported). Fallback/faster: `openai/gpt-oss-20b`.
 - Italian quality: docs say nothing per model. UNVERIFIED; test with the IT eval cases.
 - gpt-oss has no parallel tool calls. Decision: `GroqClient` deliberately does NOT send `parallel_tool_calls` (UNVERIFIED that the param is accepted on gpt-oss, and the live evals ran fine without it). The loop answers every tool call it receives, so a parallel call would still be handled. Revisit if Groq starts returning 400 on it or the model emits parallel calls. Fits "one question at a time".
-- Reasoning latency/effort params for gpt-oss: not checked (UNVERIFIED).
+- Reasoning params for gpt-oss (src: https://console.groq.com/docs/reasoning): `reasoning_format` NOT supported; `include_reasoning` true (default) / false; `reasoning_effort` low/medium/high. VERIFIED live 2026-11-15: when streaming, the default adds `reasoning` + `channel` deltas before the content; `include_reasoning: false` leaves only role/content deltas. The custom LLM proxy sends false.
 
 ## 5. Rate limits
 Src: https://console.groq.com/docs/rate-limits
